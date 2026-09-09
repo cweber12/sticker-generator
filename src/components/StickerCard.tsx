@@ -91,7 +91,7 @@ export default function StickerCard(props: StickerCardProps) {
       aria-pressed={selected}
       onClick={(event) => onSelect(sticker.id, event.shiftKey)}
       title={artName}
-      className={`card relative flex h-full w-full items-center justify-center overflow-hidden p-2 text-left ${
+      className={`card group relative flex h-full w-full items-center justify-center overflow-hidden p-2 text-left ${
         selected
           ? 'ring-2 ring-[var(--color-accent)] ring-inset'
           : 'hover:border-[var(--color-ink-4)]'
@@ -118,7 +118,9 @@ export default function StickerCard(props: StickerCardProps) {
         </span>
       )}
 
-      <span className="absolute right-0 bottom-0 left-0 truncate bg-white/85 px-2 py-1 text-[11px] text-[var(--color-ink-2)]">
+      {/* On hover only: at rest this sits exactly over the sticker's own label
+          strip, which is the part of the preview worth looking at. */}
+      <span className="absolute right-0 bottom-0 left-0 truncate bg-white/90 px-2 py-1 text-[11px] text-[var(--color-ink-2)] opacity-0 transition-opacity group-hover:opacity-100">
         {artName || sticker.masterFile}
       </span>
     </button>

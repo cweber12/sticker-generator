@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import FolderGate from '@/components/FolderGate';
 import FilterBar from '@/components/FilterBar';
 import StickerGrid from '@/components/StickerGrid';
+import { ensureFontsLoaded, type FontStatus } from '@/render/fonts';
 import { matchesSearch, useAppStore } from '@/store/useAppStore';
 
 /**
@@ -52,6 +53,8 @@ function LibraryScreen() {
 
       <FilterBar visibleIds={visibleIds} />
 
+      <FontWarning />
+
       {notices.length > 0 && (
         <div className="flex items-start gap-3 border-b border-[var(--color-amber)] bg-amber-50 px-4 py-2 text-sm text-[var(--color-ink-2)]">
           <ul className="flex-1 space-y-0.5">
@@ -74,6 +77,32 @@ function LibraryScreen() {
         visibleIds={visibleIds}
         empty={(stickers?.length ?? 0) === 0}
       />
+    </div>
+  );
+}
+
+/**
+ * Canvas does not error on a missing font, it silently substitutes one — which
+ * is how v1 produced different typography on each machine without anyone
+ * noticing. Every render here still goes ahead; it just says so first.
+ */
+function FontWarning() {
+  const [fonts, setFonts] = useState<FontStatus | null>(null);
+
+  useEffect(() => {
+    void ensureFontsLoaded().then(setFonts);
+  }, []);
+
+  if (!fonts || fonts.ok) return null;
+
+  return (
+    <div className="border-b border-[var(--color-amber)] bg-amber-50 px-4 py-2 text-sm text-[var(--color-ink-2)]">
+      <strong>Label fonts are not loaded.</strong>{' '}
+      {!fonts.name && <>The art-name face is missing. </>}
+      {!fonts.subtitle && <>The subtitle face is missing. </>}
+      Everything below — and anything you download — uses substitute typefaces
+      and will not match a print proof. See{' '}
+      <code className="font-mono text-xs">public/fonts/README.md</code>.
     </div>
   );
 }
