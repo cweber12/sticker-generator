@@ -54,6 +54,18 @@ export default function FolderGate() {
     );
   }
 
+  if (status === 'error') {
+    return (
+      <Panel title="Could not open that library">
+        {error && <Notice>{error}</Notice>}
+        <p className="text-sm text-[var(--color-ink-3)]">
+          Nothing in the folder has been changed.
+        </p>
+        <Button onClick={connect}>Choose a folder</Button>
+      </Panel>
+    );
+  }
+
   return (
     <Panel title="Choose your library folder">
       <p className="text-sm text-[var(--color-ink-2)]">
@@ -66,7 +78,6 @@ export default function FolderGate() {
       <p className="text-sm text-[var(--color-ink-3)]">
         Nothing is uploaded anywhere. The app only ever touches this one folder.
       </p>
-      {status === 'error' && error && <Notice>{error}</Notice>}
       <Button onClick={connect}>Choose folder</Button>
     </Panel>
   );
