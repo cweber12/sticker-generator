@@ -18,10 +18,10 @@ variants (3 sizes × 2 types) at all times, without storing six of anything.
 ```ts
 // Persistent. One per artwork. Lives in stickers.json.
 interface Sticker {
-  id: string;
+  id: string;                   // the master's filename — see ADR-0003
   artName: string;              // parsed from filename, editable
   slug: string;                 // join key for the UPC lookup
-  masterFile: string;           // filename under masters/
+  masterFile: string;           // filename in the library folder
   defaultMarks: { barcode: boolean; logo: boolean };
   overrides: LabelOverride;                        // SPARSE
   variantOverrides: Record<VariantKey, LabelOverride>;  // SPARSE
@@ -50,12 +50,19 @@ in IndexedDB, and re-requests permission with one click on later visits.
 
 ```
 <synced folder>/
-├── stickers.json        ← the library: template + every sticker
-├── masters/             ← source images, one per artwork
-│   └── sunset-beach.png
-├── upc-lookup.csv       ← optional: art_name, size, type, upc
-└── out/                 ← optional: generated PDFs, when you choose to keep them
+├── stickers.json        ← metadata overlay: template + one record per image
+├── Sunset Beach.png     ← masters sit directly in the folder
+├── Harbour Lights.jpg
+└── upc-lookup.csv       ← optional: art_name, size, type, upc
 ```
+
+**The folder listing is the library** (`docs/adr/0003-images-in-the-library-root.md`).
+Every image in it is a sticker, adopted the moment the folder is read, so
+dropping a file in — from Explorer, or from the other machine via the sync
+client — is all it takes. `stickers.json` holds art names, marks and overrides
+keyed by filename; it does not decide what exists. A record whose file is
+absent is skipped, never deleted, because a sync client can make a file briefly
+missing and overrides must survive that.
 
 Sync is the other person's problem to have already solved, which they have, by
 installing the Drive desktop app. Two people editing `stickers.json` at the same
@@ -164,8 +171,8 @@ src/
 │   ├── renderSticker.ts  ✅ one path, preview and print, via `scale`
 │   └── toPdf.ts          ✅ canvas → 4×6in PDF
 ├── fs/
-│   ├── folder.ts         ⬜ pick folder, persist handle, re-permission
-│   ├── library.ts        ⬜ read/write stickers.json and masters/
+│   ├── folder.ts         ✅ pick folder, persist handle, re-permission
+│   ├── library.ts        ✅ read/write stickers.json, scan + adopt images
 │   └── upcLookup.ts      ⬜ parse upc-lookup.csv
 ├── lib/
 │   ├── parseFilename.ts  ✅ filename → art name (tested)
@@ -182,10 +189,10 @@ src/
 ## 7. Build order
 
 1. **Folder + library.** `fs/folder.ts`, `fs/library.ts`, a gate screen that
-   asks for the folder. Read and write `stickers.json`; import images into
-   `masters/`.
-2. **Grid + filters.** Import, filter bar, grid at two-row sizing, low-res
-   previews, selection.
+   asks for the folder. Read and write `stickers.json`; adopt every image in
+   the folder.
+2. **Grid + filters.** Filter bar, grid at two-row sizing, low-res previews,
+   selection.
 3. **Download.** Selected requests → full-res render → ZIP. **This is the point
    the tool becomes useful — stop and use it before continuing.**
 4. **Editor.** Text fields, mark toggles, sparse geometry overrides, revert.

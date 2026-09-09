@@ -3,7 +3,7 @@ import FolderGate from '@/components/FolderGate';
 import FilterBar from '@/components/FilterBar';
 import StickerGrid from '@/components/StickerGrid';
 import { ensureFontsLoaded, type FontStatus } from '@/render/fonts';
-import { matchesSearch, useAppStore } from '@/store/useAppStore';
+import { matchesSearch, presentStickers, useAppStore } from '@/store/useAppStore';
 
 /**
  * One screen.
@@ -26,14 +26,18 @@ export default function App() {
 
 function LibraryScreen() {
   const dir = useAppStore((s) => s.dir);
-  const stickers = useAppStore((s) => s.library?.stickers);
+  const library = useAppStore((s) => s.library);
+  const files = useAppStore((s) => s.files);
   const search = useAppStore((s) => s.search);
   const notices = useAppStore((s) => s.notices);
   const clearNotices = useAppStore((s) => s.clearNotices);
 
+  // The folder is the library (ADR-0003): `files` decides what exists,
+  // stickers.json only says what each one is called.
+  const present = useMemo(() => presentStickers(library, files), [library, files]);
   const visible = useMemo(
-    () => (stickers ?? []).filter((sticker) => matchesSearch(sticker, search)),
-    [stickers, search],
+    () => present.filter((sticker) => matchesSearch(sticker, search)),
+    [present, search],
   );
   const visibleIds = useMemo(() => visible.map((sticker) => sticker.id), [visible]);
 
@@ -47,6 +51,7 @@ function LibraryScreen() {
         >
           📁 {dir?.name}
         </span>
+        <RescanButton />
         <ChangeFolderButton />
         <ImportButton />
       </header>
@@ -72,11 +77,7 @@ function LibraryScreen() {
         </div>
       )}
 
-      <StickerGrid
-        visible={visible}
-        visibleIds={visibleIds}
-        empty={(stickers?.length ?? 0) === 0}
-      />
+      <StickerGrid visible={visible} visibleIds={visibleIds} empty={files.length === 0} />
     </div>
   );
 }
@@ -136,6 +137,25 @@ function ImportButton() {
         {busy ? 'Importing…' : 'Import'}
       </button>
     </>
+  );
+}
+
+/**
+ * The other machine can add artwork to the synced folder at any time, and
+ * nothing tells this tab about it. One button beats explaining that F5 works.
+ */
+function RescanButton() {
+  const rescan = useAppStore((s) => s.rescan);
+  const busy = useAppStore((s) => s.busy);
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() => void rescan()}
+      className="text-xs text-[var(--color-ink-3)] underline underline-offset-2 hover:text-[var(--color-ink)] disabled:opacity-40"
+    >
+      Rescan
+    </button>
   );
 }
 

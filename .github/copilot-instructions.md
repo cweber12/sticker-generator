@@ -47,7 +47,7 @@ only supplies a *default* in `src/config/variants.ts`.
 src/
   config/      variants.ts (sizes/types), template.ts (geometry defaults)
   render/      units, slots, fonts, barcode, renderSticker, toPdf
-  fs/          folder (pick + remember), library (stickers.json + masters/), upcLookup
+  fs/          folder (pick + remember), library (stickers.json + the images), upcLookup
   lib/         helpers (parseFilename, normalize, zip)
   store/       Zustand store (useAppStore.ts)
   components/  UI components — one file per component (PascalCase)
@@ -76,10 +76,16 @@ items; there is no separate batch mode.
 - **Missing data never blocks an export.** No UPC → no barcode plus a badge.
   Missing logo → no logo plus a warning. Do not throw. One sticker that fails
   to render must not abort a whole download — collect it and report it.
-- **The folder is the database.** `stickers.json` is read on connect and
-  written on change, preserving fields it does not recognise so a newer
-  version's data is not silently dropped. Masters accumulate in `masters/` and
-  are never modified or overwritten.
+- **The folder is the library.** Every image sitting in the library folder is
+  a sticker, adopted on sight — there is no import gate, and no `masters/`
+  subfolder (ADR-0003). `stickers.json` is a metadata overlay keyed by
+  filename, not a registry of what exists; it is read on connect, written only
+  when something was adopted, and preserves fields it does not recognise so a
+  newer version's data is not silently dropped. A record whose file is absent
+  is skipped, never deleted: a sync client can make a file briefly missing.
+- **The filename is the sticker's id.** It is unique within a folder and
+  deterministic, so both machines agree. Masters are never modified or renamed
+  by the app.
 
 ## Code style
 

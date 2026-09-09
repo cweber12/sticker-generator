@@ -39,25 +39,29 @@ variant). An absent key inherits. Reverting a field deletes the key.
 _Avoid_: per-sticker layout, custom layout
 
 **Master**:
-The source image as imported, stored once in `masters/` inside the library
-folder. Never modified; every rendering derives from it.
+The source image, sitting directly in the library folder. Never modified; every
+rendering derives from it. Its filename is the sticker's identity (ADR-0003).
 _Avoid_: original, source file
 
 **Library folder**:
-The folder on disk holding `stickers.json`, `masters/` and optionally
-`upc-lookup.csv`. Synced between machines by the Google Drive desktop client;
-the app treats it as an ordinary folder and never calls a Drive API.
+The folder on disk holding every **Master**, `stickers.json`, and optionally
+`upc-lookup.csv`. Synced between machines by a desktop sync client; the app
+treats it as an ordinary folder and never calls a cloud API. The folder listing
+IS the library: every image in it is a **Sticker** (ADR-0003).
 _Avoid_: Drive, the cloud, the repository
 
 ## Relationships
 
+- Every image in the **Library folder** is a **Sticker**; putting one there is
+  how a sticker comes to exist.
 - A **Sticker** implies every **Variant**; none are stored.
 - A **Sticker Request** = a **Sticker** + a **Variant** + **Marks**.
 - **Marks** are independent of product type; type supplies only a default.
 - An **Override** patches the **Template** for one **Sticker**.
 - A **UPC** is looked up from `upc-lookup.csv` by art name + size + type; a
   miss renders no barcode and is never fatal.
-- The **Library folder** holds every **Master** and one `stickers.json`.
+- The **Library folder** holds every **Master** and one `stickers.json`, which
+  is a metadata overlay keyed by **Master** filename, not a list of what exists.
 
 ## Example dialogue
 

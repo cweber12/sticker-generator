@@ -74,8 +74,9 @@ export default function StickerGrid({ visible, visibleIds, empty }: StickerGridP
   if (empty) {
     return (
       <Empty>
-        Nothing in this library yet. <strong>Import</strong> some artwork and it
-        will appear here, ready to render at any size or type later.
+        No artwork in this folder yet. Drop images straight into it — or use{' '}
+        <strong>Import</strong> — and they become stickers you can render at any
+        size or type, whenever they are asked for.
       </Empty>
     );
   }

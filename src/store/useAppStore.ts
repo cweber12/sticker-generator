@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import type { Filters, Library, Sticker, StickerRequest } from '@/types';
+import type { Marks } from '@/render/slots';
+import type { TypeId } from '@/config/variants';
 import { SIZES, TYPES, getType } from '@/config/variants';
 import { buildStickerArchive, saveBlob } from '@/lib/zip';
 import {
@@ -11,7 +13,7 @@ import {
   pickLibraryFolder,
   requestFolderAccess,
 } from '@/fs/folder';
-import { clearMasterCache, importImages, readLibrary, writeLibrary } from '@/fs/library';
+import { clearMasterCache, copyIntoLibrary, readLibrary, syncLibrary } from '@/fs/library';
 
 /**
  * Application state.
@@ -41,8 +43,13 @@ interface AppState {
   pendingDir: FileSystemDirectoryHandle | null;
   error: string | null;
 
-  /** The whole of stickers.json, including keys this version does not know. */
+  /**
+   * The whole of stickers.json, including keys this version does not know.
+   * Metadata only — `files` is what says which stickers exist (ADR-0003).
+   */
   library: Library | null;
+  /** Images actually in the library folder, in display order. THE library. */
+  files: string[];
   /** An import or a save is in flight. */
   busy: boolean;
   /** Non-fatal things worth telling the user about, newest batch only. */
@@ -72,8 +79,10 @@ interface AppState {
   /** Forgets the folder and returns to the gate. */
   disconnect: () => Promise<void>;
 
-  /** Copies images into masters/ and appends them to the library. */
+  /** Copies images from elsewhere into the library folder. */
   importFiles: (files: readonly File[]) => Promise<void>;
+  /** Re-reads the folder, picking up whatever the other machine synced in. */
+  rescan: () => Promise<void>;
   /** Renders the selection as the current request and saves one ZIP. */
   downloadSelected: () => Promise<void>;
 
@@ -113,6 +122,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   error: null,
 
   library: null,
+  files: [],
   busy: false,
   notices: [],
 
@@ -148,7 +158,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (isSettled(get().status)) return;
 
     if (permitted) {
-      await open(handle, set);
+      await open(handle, set, marksFor(get().filters.type));
     } else {
       set({ status: 'needs-permission', pendingDir: handle });
     }
@@ -157,7 +167,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   connect: async () => {
     try {
       const handle = await pickLibraryFolder();
-      await open(handle, set);
+      await open(handle, set, marksFor(get().filters.type));
     } catch (error) {
       if (isPickerDismissal(error)) {
         // Chrome throws AbortError both when you dismiss the picker and when
@@ -178,7 +188,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!handle) return;
 
     if (await requestFolderAccess(handle)) {
-      await open(handle, set);
+      await open(handle, set, marksFor(get().filters.type));
     } else {
       set({
         status: 'needs-permission',
@@ -197,6 +207,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       library: null,
       error: null,
       notices: [],
+      files: [],
       selected: new Set<string>(),
       anchorId: null,
       search: '',
@@ -209,24 +220,46 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     set({ busy: true, notices: [] });
     try {
-      // Product type supplies only a DEFAULT for the marks; the filter bar
-      // still decides what any given render actually shows.
-      const defaultMarks = getType(filters.type)?.defaultMarks ?? { barcode: true, logo: false };
-      const { stickers, failures } = await importImages(dir, files, defaultMarks);
+      const { copied, skipped, failures } = await copyIntoLibrary(dir, files);
+      const synced = await syncLibrary(dir, library, marksFor(filters.type));
 
-      const next = await writeLibrary(dir, {
-        ...library,
-        stickers: [...library.stickers, ...stickers],
-      });
+      const notices = failures.map((f) => `${f.filename} could not be copied in: ${f.message}`);
+      if (skipped.length > 0) {
+        notices.push(
+          `Already in the library, left alone: ${skipped.join(', ')}. Rename the file if it is different artwork.`,
+        );
+      }
 
       set({
-        library: next,
+        library: synced.library,
+        files: synced.files,
         busy: false,
-        notices: failures.map((f) => `${f.filename} could not be imported: ${f.message}`),
-        // Importing selects what you just brought in, which is almost always
-        // what you are about to download.
-        selected: new Set(stickers.map((s) => s.id)),
-        anchorId: stickers.at(-1)?.id ?? null,
+        notices,
+        // Select what you just brought in — almost always what you are about
+        // to download. Ids are filenames now, so this needs no lookup.
+        selected: new Set(copied),
+        anchorId: copied.at(-1) ?? null,
+      });
+    } catch (error) {
+      set({ busy: false, notices: [messageOf(error)] });
+    }
+  },
+
+  rescan: async () => {
+    const { dir, library, filters } = get();
+    if (!dir || !library) return;
+
+    set({ busy: true, notices: [] });
+    try {
+      const synced = await syncLibrary(dir, library, marksFor(filters.type));
+      set({
+        library: synced.library,
+        files: synced.files,
+        busy: false,
+        notices:
+          synced.adopted.length > 0
+            ? [`Found ${synced.adopted.length} new image${synced.adopted.length === 1 ? '' : 's'}.`]
+            : [],
       });
     } catch (error) {
       set({ busy: false, notices: [messageOf(error)] });
@@ -309,6 +342,30 @@ const DISMISSED =
   'Chrome also refuses some protected locations, so try a subfolder rather than ' +
   'the top of your user folder or a drive root.';
 
+/**
+ * Marks a newly adopted image starts with. Product type supplies only a
+ * DEFAULT; the filter bar still decides what any given render shows.
+ */
+function marksFor(type: TypeId): Marks {
+  return getType(type)?.defaultMarks ?? TYPES[0].defaultMarks;
+}
+
+/**
+ * The library as the FOLDER defines it: present files in display order, paired
+ * with their metadata. A record whose file is absent is skipped rather than
+ * deleted — see ADR-0003.
+ */
+export function presentStickers(
+  library: Library | null,
+  files: readonly string[],
+): Sticker[] {
+  if (!library) return [];
+  const byFile = new Map(library.stickers.map((sticker) => [sticker.masterFile, sticker]));
+  return files
+    .map((file) => byFile.get(file))
+    .filter((sticker): sticker is Sticker => sticker !== undefined);
+}
+
 /** A folder is already open, or in the middle of opening. */
 function isSettled(status: ConnectionStatus): boolean {
   return status === 'ready' || status === 'connecting';
@@ -317,23 +374,30 @@ function isSettled(status: ConnectionStatus): boolean {
 type SetState = (partial: Partial<AppState>) => void;
 
 /** Connects to a folder we are already permitted to use, and loads its index. */
-async function open(handle: FileSystemDirectoryHandle, set: SetState): Promise<void> {
+async function open(
+  handle: FileSystemDirectoryHandle,
+  set: SetState,
+  marks: Marks,
+): Promise<void> {
   set({ status: 'connecting', error: null });
   clearMasterCache();
   try {
+    // Read the overlay, then let the folder say what is actually in it.
     const library = await readLibrary(handle);
+    const synced = await syncLibrary(handle, library, marks);
     set({
       status: 'ready',
       dir: handle,
       pendingDir: null,
-      library,
+      library: synced.library,
+      files: synced.files,
       error: null,
       selected: new Set<string>(),
       anchorId: null,
     });
   } catch (error) {
     // A folder we cannot read is not a folder we should pretend to be in.
-    set({ status: 'error', error: messageOf(error), dir: null, library: null });
+    set({ status: 'error', error: messageOf(error), dir: null, library: null, files: [] });
   }
 }
 

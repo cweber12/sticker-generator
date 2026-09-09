@@ -30,7 +30,12 @@ vi.mock('@/fs/library', async (importOriginal) => {
     ...actual,
     readLibrary: vi.fn(async () => actual.emptyLibrary()),
     writeLibrary: vi.fn(async (_dir: unknown, lib: unknown) => lib),
-    importImages: vi.fn(async () => ({ stickers: [], failures: [] })),
+    syncLibrary: vi.fn(async (_dir: unknown, library: unknown) => ({
+      library,
+      files: [],
+      adopted: [],
+    })),
+    copyIntoLibrary: vi.fn(async () => ({ copied: [], skipped: [], failures: [] })),
     clearMasterCache: vi.fn(),
   };
 });
@@ -44,6 +49,7 @@ beforeEach(() => {
   useAppStore.setState({
     ...pristine,
     status: 'checking',
+    files: [],
     dir: null,
     pendingDir: null,
     library: null,
@@ -58,6 +64,11 @@ beforeEach(() => {
   vi.mocked(folder.hasFolderAccess).mockResolvedValue(true);
   vi.mocked(folder.requestFolderAccess).mockResolvedValue(true);
   vi.mocked(library.readLibrary).mockResolvedValue(emptyLibrary());
+  vi.mocked(library.syncLibrary).mockImplementation(async (_dir, lib) => ({
+    library: lib,
+    files: [],
+    adopted: [],
+  }));
 });
 
 describe('init', () => {
