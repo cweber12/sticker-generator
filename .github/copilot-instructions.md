@@ -3,8 +3,8 @@
 ## Project overview
 
 A browser-based React + TypeScript app that turns a batch of uploaded artwork
-into print-ready 4×6in PDF stickers, and keeps a reusable library of them in
-Google Drive.
+into print-ready 4×6in PDF stickers, and keeps a reusable library of them in an
+ordinary folder on disk that both machines already sync.
 
 **Read `docs/v2-plan.md` before making any structural change.** It is the spec.
 
@@ -15,14 +15,15 @@ type are **not properties of a sticker** — they are axes of a `StickerRequest`
 One image therefore implies all size × type variants at all times, without
 storing any of them.
 
-- `Sticker` — persistent, one per artwork, lives in `catalog.json` on Drive.
+- `Sticker` — persistent, one per artwork, lives in `stickers.json` in the
+  library folder.
 - `StickerRequest` — ephemeral `{ stickerId, size, type, barcode, logo }`.
   A download is `StickerRequest[] → ZIP`. That is the whole application.
 
 There is **no spreadsheet import**, no column mapping, and no image-to-row
 matching. A predecessor repo (`sticker-maker`) worked that way; do not
-reintroduce any of it. Barcodes come from `upc-lookup.csv` in Drive, joined on
-`lookupKey(artName, size, type)`.
+reintroduce any of it. Barcodes come from `upc-lookup.csv` in the library
+folder, joined on `lookupKey(artName, size, type)`.
 
 Marks (barcode, diamond logo) are **independent booleans valid on any product
 type**. There is no type-dependent branching in the render path — product type
@@ -36,7 +37,9 @@ only supplies a *default* in `src/config/variants.ts`.
 - **Barcodes:** bwip-js (client-side UPC-A canvas rendering)
 - **PDF:** jsPDF, rasterized only
 - **Packaging:** JSZip
-- **Storage:** Google Drive via browser OAuth, `drive.file` scope. No backend.
+- **Storage:** a local folder picked with `showDirectoryPicker()`, its handle
+  persisted in IndexedDB. No backend, no API, no OAuth — see
+  `docs/adr/0002-local-folder-storage.md`. Chrome and Edge only.
 
 ## Folder structure
 
@@ -44,13 +47,16 @@ only supplies a *default* in `src/config/variants.ts`.
 src/
   config/      variants.ts (sizes/types), template.ts (geometry defaults)
   render/      units, slots, fonts, barcode, renderSticker, toPdf
-  drive/       auth, client, catalog, upcLookup
-  lib/         pure helpers (parseFilename, normalize, zip)
+  fs/          folder (pick + remember), library (stickers.json + masters/), upcLookup
+  lib/         helpers (parseFilename, normalize, zip)
   store/       Zustand store (useAppStore.ts)
   components/  UI components — one file per component (PascalCase)
-  routes/      NewBatch.tsx, Library.tsx
   types/       shared types (index.ts)
 ```
+
+There is no `routes/`. The app is one screen: a filter bar over a grid of every
+sticker in the library. Importing adds to that library and selects the new
+items; there is no separate batch mode.
 
 ## Rules that matter
 
@@ -68,7 +74,12 @@ src/
 - **Overrides are sparse.** An absent key inherits the template. Revert is
   `delete overrides[key]`. Never write a full template blob onto a sticker.
 - **Missing data never blocks an export.** No UPC → no barcode plus a badge.
-  Missing logo → no logo plus a warning. Do not throw.
+  Missing logo → no logo plus a warning. Do not throw. One sticker that fails
+  to render must not abort a whole download — collect it and report it.
+- **The folder is the database.** `stickers.json` is read on connect and
+  written on change, preserving fields it does not recognise so a newer
+  version's data is not silently dropped. Masters accumulate in `masters/` and
+  are never modified or overwritten.
 
 ## Code style
 
@@ -87,7 +98,8 @@ src/
 
 Pure logic is tested; canvas pixels are not. Required coverage:
 `slots.ts` (all four mark combinations plus degenerate templates),
-`parseFilename.ts`, `normalize.ts`, override merging, and catalog round-trip.
+`parseFilename.ts`, `normalize.ts`, override merging, and a `stickers.json`
+round-trip.
 Do not write pixel-comparison tests — verify visual output against a printed
 proof instead.
 
@@ -96,11 +108,11 @@ proof instead.
 Format: `type(scope): short description`
 
 Types: `feat`, `fix`, `refactor`, `style`, `chore`, `docs`, `test`
-Scopes: `render`, `drive`, `grid`, `editor`, `store`, `config`, `lib`, `ui`
+Scopes: `render`, `fs`, `grid`, `editor`, `store`, `config`, `lib`, `ui`
 
 Examples:
 - `feat(render): place barcode and logo as independent slots`
-- `feat(drive): load and save catalog.json`
+- `feat(fs): read and write stickers.json`
 - `fix(render): await font loading before measuring text`
 - `test(lib): cover filename parsing edge cases`
 
