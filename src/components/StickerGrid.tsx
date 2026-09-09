@@ -4,9 +4,9 @@ import StickerCard from './StickerCard';
 import type { LabelTemplate } from '@/config/template';
 import type { Marks } from '@/render/slots';
 import { variantKey } from '@/config/variants';
-import { useAppStore, upcFor } from '@/store/useAppStore';
+import { useAppStore } from '@/store/useAppStore';
 import type { Sticker } from '@/types';
-import { resolveLabelText, resolveTemplate } from '@/types';
+import { resolveLabelText, resolveTemplate, upcFor } from '@/types';
 
 /**
  * Every sticker in the library, drawn as the current request.

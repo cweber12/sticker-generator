@@ -16,6 +16,8 @@ export default function FilterBar({ visibleIds }: { visibleIds: readonly string[
   const selected = useAppStore((s) => s.selected);
   const selectAll = useAppStore((s) => s.selectAll);
   const clearSelection = useAppStore((s) => s.clearSelection);
+  const downloadSelected = useAppStore((s) => s.downloadSelected);
+  const busy = useAppStore((s) => s.busy);
 
   const allVisibleSelected =
     visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
@@ -78,6 +80,14 @@ export default function FilterBar({ visibleIds }: { visibleIds: readonly string[
           className="text-sm text-[var(--color-ink-3)] underline underline-offset-2 hover:text-[var(--color-ink)] disabled:opacity-40 disabled:hover:text-[var(--color-ink-3)]"
         >
           {allVisibleSelected ? 'Clear' : 'Select all'}
+        </button>
+        <button
+          type="button"
+          onClick={() => void downloadSelected()}
+          disabled={busy || selected.size === 0}
+          className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-white hover:bg-[var(--color-brand-600)] disabled:opacity-40"
+        >
+          {busy ? 'Working…' : 'Download'}
         </button>
       </div>
     </div>

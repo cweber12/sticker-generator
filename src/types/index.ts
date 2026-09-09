@@ -102,6 +102,22 @@ export function resolveLabelText(
   };
 }
 
+/**
+ * The UPC for one request, or null when the lookup has no row for it.
+ *
+ * Keyed on the stored slug, which is what joins a sticker to a row in
+ * upc-lookup.csv. Same shape as lib/normalize's lookupKey:
+ * "sunset-beach|16x20|DAK".
+ */
+export function upcFor(
+  upcs: Readonly<Record<string, string>>,
+  sticker: Pick<Sticker, 'slug'>,
+  size: SizeId,
+  type: TypeId,
+): string | null {
+  return upcs[`${sticker.slug}|${variantKey(size, type)}`] ?? null;
+}
+
 /** Text overrides are not template fields — drop them before merging. */
 function geometryOnly(o: LabelOverride | undefined): Partial<LabelTemplate> {
   if (!o) return {};

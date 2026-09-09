@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import type { Filters, Library, Sticker } from '@/types';
-import type { SizeId, TypeId } from '@/config/variants';
-import { SIZES, TYPES, getType, variantKey } from '@/config/variants';
+import type { Filters, Library, Sticker, StickerRequest } from '@/types';
+import { SIZES, TYPES, getType } from '@/config/variants';
+import { buildStickerArchive, saveBlob } from '@/lib/zip';
 import {
   forgetFolderHandle,
   hasFolderAccess,
@@ -74,6 +74,8 @@ interface AppState {
 
   /** Copies images into masters/ and appends them to the library. */
   importFiles: (files: readonly File[]) => Promise<void>;
+  /** Renders the selection as the current request and saves one ZIP. */
+  downloadSelected: () => Promise<void>;
 
   setFilters: (patch: Partial<Filters>) => void;
   setSearch: (search: string) => void;
@@ -103,16 +105,6 @@ export function matchesSearch(
   );
 }
 
-/** The UPC for one request, or null when the lookup has no row for it. */
-export function upcFor(
-  upcs: Readonly<Record<string, string>>,
-  sticker: Pick<Sticker, 'slug'>,
-  size: SizeId,
-  type: TypeId,
-): string | null {
-  // Same shape as lib/normalize's lookupKey: "sunset-beach|16x20|DAK".
-  return upcs[`${sticker.slug}|${variantKey(size, type)}`] ?? null;
-}
 
 export const useAppStore = create<AppState>((set, get) => ({
   status: 'checking',
@@ -223,6 +215,42 @@ export const useAppStore = create<AppState>((set, get) => ({
         selected: new Set(stickers.map((s) => s.id)),
         anchorId: stickers.at(-1)?.id ?? null,
       });
+    } catch (error) {
+      set({ busy: false, notices: [messageOf(error)] });
+    }
+  },
+
+  downloadSelected: async () => {
+    const { dir, library, selected, filters, upcs } = get();
+    if (!dir || !library || selected.size === 0) return;
+
+    set({ busy: true, notices: [] });
+    try {
+      // Library order, not selection order, so the archive comes out in the
+      // same order as the grid you picked from.
+      const chosen = library.stickers.filter((sticker) => selected.has(sticker.id));
+      const requests: StickerRequest[] = chosen.map((sticker) => ({
+        stickerId: sticker.id,
+        size: filters.size,
+        type: filters.type,
+        barcode: filters.barcode,
+        logo: filters.logo,
+      }));
+
+      const archive = await buildStickerArchive(requests, {
+        dir,
+        template: library.template,
+        stickersById: new Map(library.stickers.map((sticker) => [sticker.id, sticker])),
+        upcs,
+      });
+
+      if (archive.blob) saveBlob(archive.blob, archive.filename);
+
+      const notices = archive.failures.map((f) => `${f.label} could not be rendered: ${f.message}`);
+      if (!archive.blob) {
+        notices.unshift('Nothing could be rendered, so no archive was downloaded.');
+      }
+      set({ busy: false, notices });
     } catch (error) {
       set({ busy: false, notices: [messageOf(error)] });
     }
