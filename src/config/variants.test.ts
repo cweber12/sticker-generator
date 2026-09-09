@@ -2,23 +2,28 @@ import { describe, it, expect } from 'vitest';
 import { SIZES, TYPES, defaultSubtitle, allVariants, parseVariantKey, variantKey } from './variants';
 
 describe('defaultSubtitle', () => {
-  it('prints the full product name, because the product is a kit', () => {
-    expect(defaultSubtitle('16x20', 'DAK')).toBe('16 × 20 Diamond Art Kit');
-    expect(defaultSubtitle('8x10', 'PBN')).toBe('8 × 10 Paint by Numbers Kit');
+  it('prints the unspaced size and the full product name', () => {
+    expect(defaultSubtitle('16x20', 'DAK')).toBe('16x20 Diamond Art Kit');
+    expect(defaultSubtitle('8x10', 'PBN')).toBe('8x10 Paint by Numbers Kit');
   });
 
-  it('never abbreviates to the filter-bar form', () => {
-    // `short` exists so the filter buttons stay narrow. It is not what the
-    // customer reads off the printed sticker.
+  it('never uses a UI form on the sticker', () => {
+    // The filter bar gets the prettier "16 × 20" and the abbreviated
+    // "Diamond Art". Neither is what the customer reads off the print.
     for (const size of SIZES) {
       for (const type of TYPES) {
-        expect(defaultSubtitle(size.id, type.id)).toContain(type.label);
+        const subtitle = defaultSubtitle(size.id, type.id);
+        expect(subtitle).toContain(size.id);
+        expect(subtitle).toContain(type.label);
+        expect(subtitle).not.toContain('×');
+        // Exactly one space, between the size and the product name.
+        expect(subtitle.split(' ')[0]).toBe(size.id);
       }
     }
   });
 
   it('degrades to whichever half it knows rather than printing junk', () => {
-    expect(defaultSubtitle('16x20', 'nope')).toBe('16 × 20');
+    expect(defaultSubtitle('16x20', 'nope')).toBe('16x20');
     expect(defaultSubtitle('nope', 'DAK')).toBe('Diamond Art Kit');
     expect(defaultSubtitle('nope', 'nope')).toBe('');
   });
