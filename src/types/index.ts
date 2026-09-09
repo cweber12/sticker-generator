@@ -1,0 +1,84 @@
+import type { LabelTemplate } from '@/config/template';
+import type { Marks } from '@/render/slots';
+import type { SizeId, TypeId, VariantKey } from '@/config/variants';
+
+/**
+ * The two nouns of the application.
+ *
+ * v1's `StickerRow` was a spreadsheet record with an image attached, which is
+ * why it needed column mapping, fuzzy name matching and a `needsReview` flag.
+ * In v2 the image IS the record, and size/type are not properties of it — they
+ * are axes of a REQUEST. That split is what removes the matching problem.
+ */
+
+/** Fields a sticker may override on top of the global template. */
+export interface LabelOverride extends Partial<LabelTemplate> {
+  /** Display name, when it should differ from the parsed filename. */
+  artName?: string;
+  /** Subtitle line, when it should differ from "<size> <type short>". */
+  subtitle?: string;
+}
+
+/** Persistent. One per uploaded artwork. Lives in catalog.json. */
+export interface Sticker {
+  id: string;
+  /** Parsed from the filename, user-editable. */
+  artName: string;
+  /** slugify(artName) — the join key to upc-lookup.csv. */
+  slug: string;
+  /** Drive file id of the master image. */
+  masterFileId: string;
+  masterFileName: string;
+  createdAt: string;
+  updatedAt: string;
+  /** Marks pre-selected for this sticker. The filter bar can still override. */
+  defaultMarks: Marks;
+  /**
+   * SPARSE. A key that is absent inherits the global template, so reverting a
+   * field is `delete overrides[key]` — exact, not "restore a remembered value".
+   */
+  overrides: LabelOverride;
+  /** SPARSE and rare: overrides that apply to one size x type only. */
+  variantOverrides: Record<VariantKey, LabelOverride>;
+}
+
+/**
+ * Ephemeral. What the user is asking for right now. Never persisted.
+ * A download is simply StickerRequest[] -> ZIP.
+ */
+export interface StickerRequest {
+  stickerId: string;
+  size: SizeId;
+  type: TypeId;
+  barcode: boolean;
+  logo: boolean;
+}
+
+/** The whole index, as stored at the Drive folder root. */
+export interface Catalog {
+  version: 1;
+  updatedAt: string;
+  template: LabelTemplate;
+  stickers: Sticker[];
+}
+
+/** Resolves template -> sticker overrides -> variant overrides, in that order. */
+export function resolveTemplate(
+  template: LabelTemplate,
+  sticker: Pick<Sticker, 'overrides' | 'variantOverrides'>,
+  key?: VariantKey,
+): LabelTemplate {
+  const variant = key ? sticker.variantOverrides[key] : undefined;
+  return { ...template, ...geometryOnly(sticker.overrides), ...geometryOnly(variant) };
+}
+
+/** Text overrides are not template fields — drop them before merging. */
+function geometryOnly(o: LabelOverride | undefined): Partial<LabelTemplate> {
+  if (!o) return {};
+  const out: Partial<LabelTemplate> = {};
+  for (const [k, v] of Object.entries(o)) {
+    if (k === 'artName' || k === 'subtitle') continue;
+    (out as Record<string, unknown>)[k] = v;
+  }
+  return out;
+}

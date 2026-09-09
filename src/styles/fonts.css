@@ -1,0 +1,26 @@
+/*
+ * Self-hosted sticker faces.
+ *
+ * The .woff2 files are NOT committed — they are licensed separately.
+ * See public/fonts/README.md. If they are absent the app still runs; the
+ * font-status banner warns that output will not match the print proof.
+ *
+ * `font-display: block` is deliberate: a swap would let a canvas draw land on
+ * the fallback face mid-load and silently produce a wrong sticker.
+ */
+
+@font-face {
+  font-family: 'Sticker Name';
+  src: url('/fonts/sticker-name.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Sticker Subtitle';
+  src: url('/fonts/sticker-subtitle.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
