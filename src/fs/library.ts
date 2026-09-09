@@ -144,6 +144,46 @@ export async function readMaster(
   return handle.getFile();
 }
 
+export interface MasterImage {
+  source: CanvasImageSource;
+  width: number;
+  height: number;
+}
+
+/**
+ * Decoded masters, keyed by filename.
+ *
+ * Every card in the grid re-renders whenever a filter changes, so without this
+ * a single click would re-read and re-decode every image on disk. Masters are
+ * immutable once written, which is what makes caching them safe.
+ */
+const decoded = new Map<string, Promise<MasterImage>>();
+
+export function loadMasterImage(
+  dir: FileSystemDirectoryHandle,
+  masterFile: string,
+): Promise<MasterImage> {
+  const cached = decoded.get(masterFile);
+  if (cached) return cached;
+
+  const pending = (async (): Promise<MasterImage> => {
+    const bitmap = await createImageBitmap(await readMaster(dir, masterFile));
+    return { source: bitmap, width: bitmap.width, height: bitmap.height };
+  })();
+
+  // A failure must not be remembered, or a master that was merely missing when
+  // the sync client had not caught up stays broken until a reload.
+  pending.catch(() => decoded.delete(masterFile));
+
+  decoded.set(masterFile, pending);
+  return pending;
+}
+
+/** Called when the folder changes, so a new library cannot see old bytes. */
+export function clearMasterCache(): void {
+  decoded.clear();
+}
+
 // -- Naming -----------------------------------------------------------------
 
 /** The extension as written, including the dot. `.png` when there is none. */

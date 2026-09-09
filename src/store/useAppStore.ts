@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import type { Filters, Library } from '@/types';
-import { SIZES, TYPES, getType } from '@/config/variants';
+import type { Filters, Library, Sticker } from '@/types';
+import type { SizeId, TypeId } from '@/config/variants';
+import { SIZES, TYPES, getType, variantKey } from '@/config/variants';
 import {
   forgetFolderHandle,
   hasFolderAccess,
@@ -10,7 +11,7 @@ import {
   pickLibraryFolder,
   requestFolderAccess,
 } from '@/fs/folder';
-import { importImages, readLibrary, writeLibrary } from '@/fs/library';
+import { clearMasterCache, importImages, readLibrary, writeLibrary } from '@/fs/library';
 
 /**
  * Application state.
@@ -48,6 +49,19 @@ interface AppState {
   notices: string[];
 
   filters: Filters;
+  /** Free text matched against art names. */
+  search: string;
+  /** Sticker ids picked for download. Survives filter changes by design. */
+  selected: ReadonlySet<string>;
+  /** Where the last plain click landed, so shift-click has a range to fill. */
+  anchorId: string | null;
+
+  /**
+   * lookupKey -> UPC, read from upc-lookup.csv. Empty until #25 parses it, so
+   * every barcode request currently reports a miss and badges the card, which
+   * is exactly what the absence of the file means.
+   */
+  upcs: Readonly<Record<string, string>>;
 
   /** Run once on mount: reconnects to a remembered folder if it can. */
   init: () => Promise<void>;
@@ -62,7 +76,42 @@ interface AppState {
   importFiles: (files: readonly File[]) => Promise<void>;
 
   setFilters: (patch: Partial<Filters>) => void;
+  setSearch: (search: string) => void;
+
+  /** Plain click toggles one card; shift-click fills the range from the anchor. */
+  clickSticker: (id: string, visibleIds: readonly string[], shift: boolean) => void;
+  selectAll: (visibleIds: readonly string[]) => void;
+  clearSelection: () => void;
+
   clearNotices: () => void;
+}
+
+/**
+ * Whether the search box admits a sticker. The master filename counts too, so
+ * looking for the file you just dropped in finds it even if the parsed art
+ * name came out differently from what you typed.
+ */
+export function matchesSearch(
+  sticker: Pick<Sticker, 'artName' | 'masterFile'>,
+  search: string,
+): boolean {
+  const query = search.trim().toLowerCase();
+  if (!query) return true;
+  return (
+    sticker.artName.toLowerCase().includes(query) ||
+    sticker.masterFile.toLowerCase().includes(query)
+  );
+}
+
+/** The UPC for one request, or null when the lookup has no row for it. */
+export function upcFor(
+  upcs: Readonly<Record<string, string>>,
+  sticker: Pick<Sticker, 'slug'>,
+  size: SizeId,
+  type: TypeId,
+): string | null {
+  // Same shape as lib/normalize's lookupKey: "sunset-beach|16x20|DAK".
+  return upcs[`${sticker.slug}|${variantKey(size, type)}`] ?? null;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -81,6 +130,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     barcode: true,
     logo: false,
   },
+  search: '',
+  selected: new Set<string>(),
+  anchorId: null,
+  upcs: {},
 
   init: async () => {
     if (!isFolderPickerSupported()) {
@@ -131,6 +184,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   disconnect: async () => {
     await forgetFolderHandle();
+    clearMasterCache();
     set({
       status: 'disconnected',
       dir: null,
@@ -138,6 +192,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       library: null,
       error: null,
       notices: [],
+      selected: new Set<string>(),
+      anchorId: null,
+      search: '',
     });
   },
 
@@ -161,6 +218,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         library: next,
         busy: false,
         notices: failures.map((f) => `${f.filename} could not be imported: ${f.message}`),
+        // Importing selects what you just brought in, which is almost always
+        // what you are about to download.
+        selected: new Set(stickers.map((s) => s.id)),
+        anchorId: stickers.at(-1)?.id ?? null,
       });
     } catch (error) {
       set({ busy: false, notices: [messageOf(error)] });
@@ -168,6 +229,32 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setFilters: (patch) => set((s) => ({ filters: { ...s.filters, ...patch } })),
+  setSearch: (search) => set({ search }),
+
+  clickSticker: (id, visibleIds, shift) => {
+    const { selected, anchorId } = get();
+    const next = new Set(selected);
+
+    const from = anchorId ? visibleIds.indexOf(anchorId) : -1;
+    const to = visibleIds.indexOf(id);
+
+    if (shift && from !== -1 && to !== -1) {
+      // A range only ever adds. Making it toggle would mean dragging across a
+      // partly-selected grid silently deselected things.
+      const [lo, hi] = from < to ? [from, to] : [to, from];
+      for (let i = lo; i <= hi; i += 1) next.add(visibleIds[i]);
+      set({ selected: next });
+      return;
+    }
+
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    set({ selected: next, anchorId: id });
+  },
+
+  selectAll: (visibleIds) => set({ selected: new Set(visibleIds) }),
+  clearSelection: () => set({ selected: new Set<string>(), anchorId: null }),
+
   clearNotices: () => set({ notices: [] }),
 }));
 
@@ -176,9 +263,18 @@ type SetState = (partial: Partial<AppState>) => void;
 /** Connects to a folder we are already permitted to use, and loads its index. */
 async function open(handle: FileSystemDirectoryHandle, set: SetState): Promise<void> {
   set({ status: 'connecting', error: null });
+  clearMasterCache();
   try {
     const library = await readLibrary(handle);
-    set({ status: 'ready', dir: handle, pendingDir: null, library, error: null });
+    set({
+      status: 'ready',
+      dir: handle,
+      pendingDir: null,
+      library,
+      error: null,
+      selected: new Set<string>(),
+      anchorId: null,
+    });
   } catch (error) {
     // A folder we cannot read is not a folder we should pretend to be in.
     set({ status: 'error', error: messageOf(error), dir: null, library: null });

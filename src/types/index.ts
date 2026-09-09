@@ -1,6 +1,7 @@
 import type { LabelTemplate } from '@/config/template';
 import type { Marks } from '@/render/slots';
 import type { SizeId, TypeId, VariantKey } from '@/config/variants';
+import { defaultSubtitle, variantKey } from '@/config/variants';
 
 /**
  * The two nouns of the application.
@@ -80,6 +81,25 @@ export function resolveTemplate(
 ): LabelTemplate {
   const variant = key ? sticker.variantOverrides[key] : undefined;
   return { ...template, ...geometryOnly(sticker.overrides), ...geometryOnly(variant) };
+}
+
+/**
+ * The two text lines for one request.
+ *
+ * Same precedence as the geometry: variant override, then sticker override,
+ * then the derived default. Reading it in one place stops the grid preview and
+ * the exported PDF from disagreeing about what a sticker is called.
+ */
+export function resolveLabelText(
+  sticker: Pick<Sticker, 'artName' | 'overrides' | 'variantOverrides'>,
+  size: SizeId,
+  type: TypeId,
+): { artName: string; subtitle: string } {
+  const variant = sticker.variantOverrides[variantKey(size, type)];
+  return {
+    artName: variant?.artName ?? sticker.overrides.artName ?? sticker.artName,
+    subtitle: variant?.subtitle ?? sticker.overrides.subtitle ?? defaultSubtitle(size, type),
+  };
 }
 
 /** Text overrides are not template fields — drop them before merging. */
