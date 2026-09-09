@@ -15,9 +15,9 @@ export interface SizeDef {
 
 export interface TypeDef {
   id: string;
-  /** Full product name, used in the label subtitle. */
+  /** Full product name. This is what goes on the sticker. */
   label: string;
-  /** Short form used on the sticker when the full name will not fit. */
+  /** Short form for the filter bar, where the button has to stay narrow. */
   short: string;
   /** Filename fragment, e.g. ArtName_DAK_16x20.pdf */
   code: string;
@@ -86,14 +86,17 @@ export function allVariants(): { size: SizeId; type: TypeId }[] {
 }
 
 /**
- * The subtitle line printed under the art name, e.g. "16 × 20 Diamond Art".
- * Uses the short product name; the editor can override per sticker.
+ * The subtitle line printed under the art name, e.g. "16 × 20 Diamond Art Kit".
+ *
+ * The FULL product name: this is what the customer reads on the sticker, and
+ * the product is a kit. `short` is for the filter bar, where the button has to
+ * stay narrow. The editor can still override it per sticker.
  */
 export function defaultSubtitle(size: SizeId, type: TypeId): string {
   const s = getSize(size);
   const t = getType(type);
   if (!s && !t) return '';
   if (!t) return s!.label;
-  if (!s) return t.short;
-  return `${s.label} ${t.short}`;
+  if (!s) return t.label;
+  return `${s.label} ${t.label}`;
 }
