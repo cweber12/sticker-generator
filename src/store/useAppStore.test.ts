@@ -95,6 +95,33 @@ describe('init', () => {
     expect(state.dir).toBeNull();
   });
 
+  it('does not undo a folder that was opened while it was still reading', async () => {
+    // StrictMode runs init twice in dev, and reading IndexedDB is slow enough
+    // that a connect() can land in between. A late "nothing was remembered"
+    // must not throw away the folder that is now open, or the app drops
+    // straight back to the gate for no visible reason.
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.mocked(folder.loadFolderHandle).mockImplementation(async () => {
+      await pending;
+      return null;
+    });
+
+    const slowInit = useAppStore.getState().init();
+
+    vi.mocked(folder.pickLibraryFolder).mockResolvedValue(handle);
+    await useAppStore.getState().connect();
+    expect(useAppStore.getState().status).toBe('ready');
+
+    release();
+    await slowInit;
+
+    expect(useAppStore.getState().status).toBe('ready');
+    expect(useAppStore.getState().dir).toBe(handle);
+  });
+
   it('does not open the picker on its own — reconnecting needs a gesture', async () => {
     vi.mocked(folder.loadFolderHandle).mockResolvedValue(handle);
     vi.mocked(folder.hasFolderAccess).mockResolvedValue(false);
@@ -135,16 +162,20 @@ describe('grantAccess', () => {
 });
 
 describe('connect', () => {
-  it('treats a dismissed picker as a change of mind, not an error', async () => {
-    const abort = new Error('aborted');
-    vi.mocked(folder.pickLibraryFolder).mockRejectedValue(abort);
+  it('says something when the picker closes without opening a folder', async () => {
+    vi.mocked(folder.pickLibraryFolder).mockRejectedValue(new Error('aborted'));
     vi.mocked(folder.isPickerDismissal).mockReturnValue(true);
 
     await useAppStore.getState().connect();
 
     const state = useAppStore.getState();
+    // Not an error screen — you are back at the gate, which is where a change
+    // of mind should leave you.
     expect(state.status).toBe('disconnected');
-    expect(state.error).toBeNull();
+    // But not silent: the gate it returns to is pixel-identical to the one it
+    // left, so with no message this is indistinguishable from a dead button.
+    // Chrome throws the same AbortError when it refuses the chosen folder.
+    expect(state.error).toMatch(/Edit files/);
   });
 
   it('surfaces an unreadable index instead of pretending the folder opened', async () => {

@@ -78,6 +78,7 @@ export default function FolderGate() {
       <p className="text-sm text-[var(--color-ink-3)]">
         Nothing is uploaded anywhere. The app only ever touches this one folder.
       </p>
+      {error && <Notice>{error}</Notice>}
       <Button onClick={connect}>Choose folder</Button>
     </Panel>
   );

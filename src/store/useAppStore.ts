@@ -134,12 +134,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const handle = await loadFolderHandle();
+    // Reading IndexedDB is slow enough that a folder can already be open by the
+    // time it finishes — React StrictMode runs this twice in dev, and the
+    // second pass must not throw away what the first one connected to.
+    if (isSettled(get().status)) return;
+
     if (!handle) {
       set({ status: 'disconnected' });
       return;
     }
 
-    if (await hasFolderAccess(handle)) {
+    const permitted = await hasFolderAccess(handle);
+    if (isSettled(get().status)) return;
+
+    if (permitted) {
       await open(handle, set);
     } else {
       set({ status: 'needs-permission', pendingDir: handle });
@@ -152,8 +160,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       await open(handle, set);
     } catch (error) {
       if (isPickerDismissal(error)) {
-        // The user changed their mind. Leave them where they were.
-        set((s) => ({ status: s.pendingDir ? 'needs-permission' : 'disconnected' }));
+        // Chrome throws AbortError both when you dismiss the picker and when
+        // it refuses the folder you chose. Returning silently to the gate
+        // renders the identical screen, so it has to say something.
+        set((s) => ({
+          status: s.pendingDir ? 'needs-permission' : 'disconnected',
+          error: DISMISSED,
+        }));
         return;
       }
       set({ status: 'error', error: messageOf(error) });
@@ -285,6 +298,21 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   clearNotices: () => set({ notices: [] }),
 }));
+
+/**
+ * Chrome rejects with AbortError for a dismissed picker AND for a folder it
+ * will not hand over, with nothing to tell them apart, so this covers both.
+ */
+const DISMISSED =
+  'No folder was opened. If you picked one and Chrome then asked whether to let ' +
+  'this site view or edit files, choose "Edit files" — view-only is not enough. ' +
+  'Chrome also refuses some protected locations, so try a subfolder rather than ' +
+  'the top of your user folder or a drive root.';
+
+/** A folder is already open, or in the middle of opening. */
+function isSettled(status: ConnectionStatus): boolean {
+  return status === 'ready' || status === 'connecting';
+}
 
 type SetState = (partial: Partial<AppState>) => void;
 

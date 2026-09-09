@@ -102,8 +102,18 @@ export function isPickerDismissal(error: unknown): boolean {
 export async function pickLibraryFolder(): Promise<FileSystemDirectoryHandle> {
   const picker = window.showDirectoryPicker;
   if (!picker) throw new Error('This browser cannot open a folder picker.');
+
   const handle = await picker({ id: 'sticker-library', mode: 'readwrite' });
-  await saveFolderHandle(handle);
+
+  // Remembering the folder is a convenience. If IndexedDB is unavailable —
+  // private window, blocked site data — you should still get to use the folder
+  // you just picked, and merely re-pick it next time.
+  try {
+    await saveFolderHandle(handle);
+  } catch {
+    // Nothing to do: the next visit starts at the gate instead.
+  }
+
   return handle;
 }
 
