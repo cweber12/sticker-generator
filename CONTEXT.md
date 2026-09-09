@@ -39,14 +39,15 @@ variant). An absent key inherits. Reverting a field deletes the key.
 _Avoid_: per-sticker layout, custom layout
 
 **Master**:
-The source image as uploaded, stored once in `masters/` on Drive. Never
-modified; every rendering derives from it.
+The source image as imported, stored once in `masters/` inside the library
+folder. Never modified; every rendering derives from it.
 _Avoid_: original, source file
 
-**Library**:
-Both the set of all saved stickers, and the `library/<Type>/<Size>/` folder tree
-in Drive that accumulates rendered PDFs as downloads happen.
-_Avoid_: archive, repository
+**Library folder**:
+The folder on disk holding `stickers.json`, `masters/` and optionally
+`upc-lookup.csv`. Synced between machines by the Google Drive desktop client;
+the app treats it as an ordinary folder and never calls a Drive API.
+_Avoid_: Drive, the cloud, the repository
 
 ## Relationships
 
@@ -56,6 +57,7 @@ _Avoid_: archive, repository
 - An **Override** patches the **Template** for one **Sticker**.
 - A **UPC** is looked up from `upc-lookup.csv` by art name + size + type; a
   miss renders no barcode and is never fatal.
+- The **Library folder** holds every **Master** and one `stickers.json`.
 
 ## Example dialogue
 

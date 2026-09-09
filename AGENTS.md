@@ -3,9 +3,12 @@
 ### Before changing anything
 
 Read `docs/v2-plan.md`. It is the spec for this repo, and `.github/copilot-instructions.md`
-summarises the rules that follow from it. The single most important one: the
-image is the record, and size/type are axes of a request, not properties of a
-sticker.
+summarises the rules that follow from it. Two rules matter most:
+
+1. The image is the record. Size and type are axes of a request, not properties
+   of a sticker.
+2. This is an internal tool for two people. Prefer the smaller option every
+   time; do not add infrastructure for users who do not exist.
 
 ### After every completed task
 

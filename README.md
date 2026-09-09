@@ -1,10 +1,14 @@
 # Sticker Generator
 
-Turns a batch of artwork into print-ready 4×6in PDF stickers, and keeps a
-reusable library of them in Google Drive.
+Turns artwork into print-ready 4×6in PDF stickers, and keeps a reusable library
+of them in a folder on disk.
 
-Upload images → preview every size and product type → edit labels → download a
-ZIP, or save to the library and re-request any of it later with filters.
+Import images → preview every size and product type → edit labels → download a
+ZIP. The library persists, so re-requesting an old artwork in a different size
+later is a filter, not a re-import.
+
+An internal tool for two people. It runs in the browser with no server and no
+accounts.
 
 ## How it works
 
@@ -13,12 +17,16 @@ product type are **axes of a request**, not properties of the sticker. One
 image therefore implies every size × type variant at all times, and nothing is
 rendered until someone asks for it.
 
-Storage is Google Drive and nothing else — `catalog.json` is the index,
-`masters/` holds the source images, and `library/<Type>/<Size>/` accumulates
-rendered PDFs as downloads happen. There is no backend.
+Storage is one folder on disk: `stickers.json` is the index and `masters/`
+holds the source images. The app picks the folder once and remembers it. It
+never calls a Google API — the folder is synced between machines by the Google
+Drive desktop client, which is not the app's problem.
 
-See `docs/v2-plan.md` for the full design and `docs/adr/0001-image-centric-model.md`
-for why it is shaped this way.
+Requires Chrome or Edge for `showDirectoryPicker`.
+
+See `docs/v2-plan.md` for the design, `docs/adr/0001-image-centric-model.md` for
+why the image is the record, and `docs/adr/0002-local-folder-storage.md` for why
+there is no Drive integration.
 
 ## Getting started
 
@@ -38,11 +46,10 @@ Without them the app still runs and warns that output will not match a print
 proof. **Confirm the webfont licensing before building further on these
 faces.**
 
-### Google Drive
+### The library folder
 
-Not wired up yet — phase 3. It will use the `drive.file` OAuth scope with the
-Google Picker for folder selection, deliberately avoiding the broad `drive`
-scope and its annual security assessment.
+Not wired up yet — first build step. Point it at a Drive- or Dropbox-synced
+folder and both machines share the library with no integration work.
 
 ## Scripts
 
@@ -58,5 +65,6 @@ scope and its annual security assessment.
 
 ## Status
 
-Phase 1 — renderer, slot math, unit system, filename parsing, key normalization.
-Phases 2–6 are open issues. Build order is in `docs/v2-plan.md` §9.
+Renderer, slot math, unit system, filename parsing and key normalization are
+done and tested. The remaining work is open issues; build order is in
+`docs/v2-plan.md` §7.

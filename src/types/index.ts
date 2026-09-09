@@ -26,9 +26,8 @@ export interface Sticker {
   artName: string;
   /** slugify(artName) — the join key to upc-lookup.csv. */
   slug: string;
-  /** Drive file id of the master image. */
-  masterFileId: string;
-  masterFileName: string;
+  /** Filename of the master image inside the library folder's masters/. */
+  masterFile: string;
   createdAt: string;
   updatedAt: string;
   /** Marks pre-selected for this sticker. The filter bar can still override. */
@@ -54,8 +53,8 @@ export interface StickerRequest {
   logo: boolean;
 }
 
-/** The whole index, as stored at the Drive folder root. */
-export interface Catalog {
+/** The whole index, as stored in stickers.json at the library folder root. */
+export interface Library {
   version: 1;
   updatedAt: string;
   template: LabelTemplate;
