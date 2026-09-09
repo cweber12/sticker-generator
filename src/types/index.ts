@@ -19,7 +19,7 @@ export interface LabelOverride extends Partial<LabelTemplate> {
   subtitle?: string;
 }
 
-/** Persistent. One per uploaded artwork. Lives in catalog.json. */
+/** Persistent. One per uploaded artwork. Lives in stickers.json. */
 export interface Sticker {
   id: string;
   /** Parsed from the filename, user-editable. */
@@ -47,6 +47,17 @@ export interface Sticker {
  */
 export interface StickerRequest {
   stickerId: string;
+  size: SizeId;
+  type: TypeId;
+  barcode: boolean;
+  logo: boolean;
+}
+
+/**
+ * What the user is currently asking to see. Filters describe a REQUEST, never
+ * a sticker: changing one must not mutate anything persistent.
+ */
+export interface Filters {
   size: SizeId;
   type: TypeId;
   barcode: boolean;
