@@ -41,6 +41,10 @@ export function pickBackgroundColor(
   h: number,
 ): string {
   if (w <= 0 || h <= 0) return FALLBACK;
+  // A buffer shorter than w x h x 4 is not the image it claims to be. Reading
+  // past the end yields undefined, and undefined compares false against every
+  // threshold — so it would sail past the alpha guard and come out as a colour.
+  if (data.length < w * h * 4) return FALLBACK;
 
   const rs: number[] = [];
   const gs: number[] = [];

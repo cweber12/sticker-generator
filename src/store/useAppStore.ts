@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Library, Sticker, Variant } from '@/types';
+import type { LabelOverride, Library, Sticker, Variant } from '@/types';
 import type { Marks } from '@/render/slots';
 import { addVariant, basketRequests, parseRequestKey, type RequestKey } from '@/lib/basket';
 import type { SizeId, TypeId } from '@/config/variants';
@@ -14,7 +14,13 @@ import {
   pickLibraryFolder,
   requestFolderAccess,
 } from '@/fs/folder';
-import { clearMasterCache, copyIntoLibrary, readLibrary, syncLibrary } from '@/fs/library';
+import {
+  clearMasterCache,
+  copyIntoLibrary,
+  readLibrary,
+  syncLibrary,
+  writeLibrary,
+} from '@/fs/library';
 
 /**
  * Application state.
@@ -134,6 +140,17 @@ interface AppState {
   /** Walks the list `detail.from` names. Clamps at both ends. */
   stepDetail: (delta: number) => void;
   setSearch: (search: string) => void;
+
+  /**
+   * Patches one sticker's overrides in memory. An `undefined` value DELETES
+   * the key, so reverting a field inherits the template again rather than
+   * remembering what it used to be (CONTEXT.md: Override).
+   *
+   * Deliberately does not write: a colour picker fires on every mouse move.
+   */
+  setOverride: (stickerId: string, patch: LabelOverride) => void;
+  /** Writes stickers.json. Called when an edit settles, not while it moves. */
+  persistLibrary: () => Promise<void>;
 
   /** Plain click toggles one card; shift-click fills the range from the anchor. */
   clickSticker: (id: string, visibleIds: readonly string[], shift: boolean) => void;
@@ -402,6 +419,38 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   setSearch: (search) => set({ search }),
 
+  setOverride: (stickerId, patch) =>
+    set((s) => {
+      if (!s.library) return {};
+      const now = new Date().toISOString();
+      return {
+        library: {
+          ...s.library,
+          stickers: s.library.stickers.map((sticker) =>
+            sticker.id === stickerId
+              ? {
+                  ...sticker,
+                  overrides: patchOverride(sticker.overrides, patch),
+                  updatedAt: now,
+                }
+              : sticker,
+          ),
+        },
+      };
+    }),
+
+  persistLibrary: async () => {
+    const { dir, library } = get();
+    if (!dir || !library) return;
+    try {
+      set({ library: await writeLibrary(dir, library) });
+    } catch (error) {
+      // The edit is still on screen and still in memory; only the folder is
+      // behind. Saying so beats diverging from the other machine in silence.
+      set({ notices: [messageOf(error)] });
+    }
+  },
+
   clickSticker: (id, visibleIds, shift) => {
     const { selected, anchorId } = get();
     const next = new Set(selected);
@@ -517,4 +566,21 @@ async function open(
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Applies a sparse patch to one sticker's overrides.
+ *
+ * `undefined` deletes rather than stores, which is what makes reverting a
+ * field exact: the key goes, and the template is inherited again. Storing a
+ * remembered value instead is how a layout ends up pinned to a number nobody
+ * chose.
+ */
+function patchOverride(current: LabelOverride, patch: LabelOverride): LabelOverride {
+  const next: Record<string, unknown> = { ...current };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) delete next[key];
+    else next[key] = value;
+  }
+  return next as LabelOverride;
 }

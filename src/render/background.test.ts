@@ -66,6 +66,12 @@ describe('pickBackgroundColor', () => {
     expect(pickBackgroundColor(data, 8, 8)).toBe('#010203');
   });
 
+  it('refuses a buffer that is shorter than the dimensions claim', () => {
+    // The stubbed canvas in this suite returns exactly this. Without the
+    // length check it reads undefined and reports "#NaNNaNNaN" as a colour.
+    expect(pickBackgroundColor(new Uint8ClampedArray(4), 64, 64)).toBe('#ffffff');
+  });
+
   it('survives degenerate dimensions without throwing', () => {
     for (const [w, h] of [
       [0, 0],
