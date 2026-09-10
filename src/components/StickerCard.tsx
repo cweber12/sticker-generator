@@ -25,6 +25,8 @@ export interface StickerCardProps {
   marks: Marks;
   upc: string | null;
   selected: boolean;
+  /** How many variants of this sticker are in the basket. 0 hides the chip. */
+  basketCount: number;
   onSelect: (id: string, shift: boolean) => void;
 }
 
@@ -36,7 +38,8 @@ export interface StickerCardProps {
 type Phase = 'blank' | 'ready' | 'failed';
 
 export default function StickerCard(props: StickerCardProps) {
-  const { sticker, dir, template, artName, subtitle, marks, upc, selected, onSelect } = props;
+  const { sticker, dir, template, artName, subtitle, marks, upc, selected, basketCount, onSelect } =
+    props;
 
   const hostRef = useRef<HTMLDivElement>(null);
   const [phase, setPhase] = useState<Phase>('blank');
@@ -105,16 +108,35 @@ export default function StickerCard(props: StickerCardProps) {
         </span>
       )}
 
-      <span className="absolute top-1.5 left-1.5 flex flex-col items-start gap-1">
+      <span className="absolute top-8 left-1.5 flex flex-col items-start gap-1">
         {phase === 'failed' && <Badge tone="bad">Render failed</Badge>}
         {/* A missing UPC is a fact about the lookup, not about this render. */}
         {phase !== 'failed' && marks.barcode && !upc && <Badge tone="warn">No UPC</Badge>}
         {phase === 'ready' && overflow && <Badge tone="warn">Label overflows</Badge>}
       </span>
 
-      {selected && (
-        <span className="absolute top-1.5 right-1.5 grid h-5 w-5 place-items-center rounded-full bg-[var(--color-accent)] text-[11px] leading-none font-bold text-white">
-          ✓
+      {/* A visual checkbox, not an <input> — a real one nested in a button is
+          invalid HTML. Slice B splits the targets, when clicking the image has
+          a detail view to open. */}
+      <span
+        aria-hidden
+        className={`absolute top-1.5 left-1.5 grid h-[18px] w-[18px] place-items-center rounded border text-[11px] leading-none font-bold ${
+          selected
+            ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-white'
+            : 'border-[var(--color-ink-4)] bg-white/90 text-transparent'
+        }`}
+      >
+        ✓
+      </span>
+
+      {/* Answers "have I dealt with this one?" while scanning the grid. Which
+          variants is the basket panel's question, not the card's. */}
+      {basketCount > 0 && (
+        <span
+          title={`In the basket at ${basketCount} variant${basketCount === 1 ? '' : 's'}`}
+          className="absolute top-1.5 right-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-[var(--color-ink-2)] px-1 text-[11px] leading-none font-bold text-white"
+        >
+          {basketCount}
         </span>
       )}
 
