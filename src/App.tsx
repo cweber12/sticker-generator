@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import FolderGate from '@/components/FolderGate';
-import FilterBar from '@/components/FilterBar';
+import RequestBar from '@/components/RequestBar';
 import StickerGrid from '@/components/StickerGrid';
 import { ensureFontsLoaded, type FontStatus } from '@/render/fonts';
 import { matchesSearch, presentStickers, useAppStore } from '@/store/useAppStore';
@@ -56,7 +56,7 @@ function LibraryScreen() {
         <ImportButton />
       </header>
 
-      <FilterBar visibleIds={visibleIds} />
+      <RequestBar visibleIds={visibleIds} />
 
       <FontWarning />
 
