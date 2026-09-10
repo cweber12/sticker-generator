@@ -7,17 +7,17 @@
  */
 
 export interface SizeDef {
-  /** Canonical id — also the Drive folder name and the filename fragment. */
+  /** Canonical, unspaced. Printed on the sticker and used in the filename. */
   id: string;
-  /** Human label for the UI. */
+  /** Display form for the filter bar, where the × reads better. */
   label: string;
 }
 
 export interface TypeDef {
   id: string;
-  /** Full product name, used in the label subtitle. */
+  /** Full product name. This is what goes on the sticker. */
   label: string;
-  /** Short form used on the sticker when the full name will not fit. */
+  /** Short form for the filter bar, where the button has to stay narrow. */
   short: string;
   /** Filename fragment, e.g. ArtName_DAK_16x20.pdf */
   code: string;
@@ -86,14 +86,21 @@ export function allVariants(): { size: SizeId; type: TypeId }[] {
 }
 
 /**
- * The subtitle line printed under the art name, e.g. "16 × 20 Diamond Art".
- * Uses the short product name; the editor can override per sticker.
+ * The subtitle line printed under the art name, e.g. "16x20 Diamond Art Kit".
+ *
+ * Both fields in their printed form: the size id, which is the unspaced "16x20"
+ * that also appears in the PDF filename, and the FULL product name, because the
+ * product is a kit and that is what the customer reads.
+ *
+ * The prettier "16 × 20" and the abbreviated "Diamond Art" are UI forms, for
+ * the filter bar. They do not belong on the sticker. The editor can still
+ * override the subtitle per sticker.
  */
 export function defaultSubtitle(size: SizeId, type: TypeId): string {
   const s = getSize(size);
   const t = getType(type);
   if (!s && !t) return '';
-  if (!t) return s!.label;
-  if (!s) return t.short;
-  return `${s.label} ${t.short}`;
+  if (!t) return s!.id;
+  if (!s) return t.label;
+  return `${s.id} ${t.label}`;
 }

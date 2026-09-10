@@ -1,6 +1,7 @@
 import type { LabelTemplate } from '@/config/template';
 import type { Marks } from '@/render/slots';
 import type { SizeId, TypeId, VariantKey } from '@/config/variants';
+import { defaultSubtitle, variantKey } from '@/config/variants';
 
 /**
  * The two nouns of the application.
@@ -19,7 +20,7 @@ export interface LabelOverride extends Partial<LabelTemplate> {
   subtitle?: string;
 }
 
-/** Persistent. One per uploaded artwork. Lives in catalog.json. */
+/** Persistent. One per uploaded artwork. Lives in stickers.json. */
 export interface Sticker {
   id: string;
   /** Parsed from the filename, user-editable. */
@@ -53,6 +54,17 @@ export interface StickerRequest {
   logo: boolean;
 }
 
+/**
+ * What the user is currently asking to see. Filters describe a REQUEST, never
+ * a sticker: changing one must not mutate anything persistent.
+ */
+export interface Filters {
+  size: SizeId;
+  type: TypeId;
+  barcode: boolean;
+  logo: boolean;
+}
+
 /** The whole index, as stored in stickers.json at the library folder root. */
 export interface Library {
   version: 1;
@@ -69,6 +81,41 @@ export function resolveTemplate(
 ): LabelTemplate {
   const variant = key ? sticker.variantOverrides[key] : undefined;
   return { ...template, ...geometryOnly(sticker.overrides), ...geometryOnly(variant) };
+}
+
+/**
+ * The two text lines for one request.
+ *
+ * Same precedence as the geometry: variant override, then sticker override,
+ * then the derived default. Reading it in one place stops the grid preview and
+ * the exported PDF from disagreeing about what a sticker is called.
+ */
+export function resolveLabelText(
+  sticker: Pick<Sticker, 'artName' | 'overrides' | 'variantOverrides'>,
+  size: SizeId,
+  type: TypeId,
+): { artName: string; subtitle: string } {
+  const variant = sticker.variantOverrides[variantKey(size, type)];
+  return {
+    artName: variant?.artName ?? sticker.overrides.artName ?? sticker.artName,
+    subtitle: variant?.subtitle ?? sticker.overrides.subtitle ?? defaultSubtitle(size, type),
+  };
+}
+
+/**
+ * The UPC for one request, or null when the lookup has no row for it.
+ *
+ * Keyed on the stored slug, which is what joins a sticker to a row in
+ * upc-lookup.csv. Same shape as lib/normalize's lookupKey:
+ * "sunset-beach|16x20|DAK".
+ */
+export function upcFor(
+  upcs: Readonly<Record<string, string>>,
+  sticker: Pick<Sticker, 'slug'>,
+  size: SizeId,
+  type: TypeId,
+): string | null {
+  return upcs[`${sticker.slug}|${variantKey(size, type)}`] ?? null;
 }
 
 /** Text overrides are not template fields — drop them before merging. */

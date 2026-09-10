@@ -28,6 +28,24 @@ export interface LogoAsset {
   height: number;
 }
 
+let logoPromise: Promise<LogoAsset | null> | null = null;
+
+/**
+ * The diamond logo, loaded once and shared by every render.
+ *
+ * Resolves to null rather than throwing when the file is missing: a missing
+ * logo costs you a logo and a warning, never an export.
+ */
+export function loadDiamondLogo(): Promise<LogoAsset | null> {
+  logoPromise ??= new Promise<LogoAsset | null>((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ source: img, width: img.width, height: img.height });
+    img.onerror = () => resolve(null);
+    img.src = `${import.meta.env.BASE_URL}diamond-logo.png`;
+  });
+  return logoPromise;
+}
+
 export interface RenderStickerInput {
   image: CanvasImageSource;
   imageW: number;
