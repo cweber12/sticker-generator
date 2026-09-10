@@ -52,6 +52,18 @@ export default function StickerGrid({ visible, visibleIds, empty }: StickerGridP
   const settled = useDebounced(request, FILTER_SETTLE_MS);
 
   /**
+   * One marks object shared by every card, and stable across a library
+   * change. It sits outside the map below because that memo recomputes
+   * whenever ANY sticker is edited — and a fresh marks object would then be a
+   * new effect dependency for all forty cards, re-rendering every canvas on
+   * every drag of the colour picker.
+   */
+  const cardMarks = useMemo(
+    () => ({ barcode: settled.barcode, logo: settled.logo }),
+    [settled.barcode, settled.logo],
+  );
+
+  /**
    * Render inputs for every sticker, keyed by id.
    *
    * Deliberately built from the whole library rather than from `visible`:
@@ -65,20 +77,17 @@ export default function StickerGrid({ visible, visibleIds, empty }: StickerGridP
     if (!template || !stickers) return byId;
 
     const key = variantKey(settled.size, settled.type);
-    // One object shared by every card, so a card only re-renders when the
-    // marks actually change rather than on every paint.
-    const marks = { barcode: settled.barcode, logo: settled.logo };
 
     for (const sticker of stickers) {
       byId.set(sticker.id, {
         template: resolveTemplate(template, sticker, key),
-        marks,
+        marks: cardMarks,
         ...resolveLabelText(sticker, settled.size, settled.type),
         upc: upcFor(upcs, sticker, settled.size, settled.type),
       });
     }
     return byId;
-  }, [stickers, template, settled, upcs]);
+  }, [stickers, template, settled, upcs, cardMarks]);
 
   /**
    * How many variants of each sticker sit in the basket. Built once for the

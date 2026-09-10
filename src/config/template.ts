@@ -11,9 +11,34 @@ export const DPI = 300;
 export const STICKER_W_IN = 4;
 export const STICKER_H_IN = 6;
 
+/**
+ * How the master fills the sticker.
+ *
+ * `cover` crops to fill all 4x6 and floats the label over the artwork.
+ * `contain` shrinks the master so all of it shows, and puts the label below it
+ * on a background. See docs/adr/0005-contained-artwork-and-the-frame.md.
+ */
+export type Fit = 'cover' | 'contain';
+
+/** The sentinel meaning "sample the colour from the master's own edge". */
+export const AUTO_BACKGROUND = 'auto';
+
+/** `AUTO_BACKGROUND`, or a `#rrggbb` hex. Only visible under `contain`. */
+export type Background = string;
+
 export interface LabelTemplate {
+  /** How the master fills the sticker. */
+  fit: Fit;
+  /** `AUTO_BACKGROUND`, or a `#rrggbb` hex. Only drawn under `contain`. */
+  background: Background;
   /** Gap between the floating white label and all four sticker edges. */
   labelInsetIn: number;
+  /**
+   * Margin around the whole composition under `contain`, and the floor for the
+   * three equal vertical gaps. Separate from `labelInsetIn` because that value
+   * is tuned for a strip floating OVER artwork, not for a frame around it.
+   */
+  framePaddingIn: number;
   /** Height of the floating white info strip. */
   labelHeightIn: number;
   /** Inner padding inside the label strip. */
@@ -40,9 +65,15 @@ export interface LabelTemplate {
  * v1's `textAreaWidth` is deliberately absent: it was always derivable from the
  * label width minus padding minus the enabled marks, and storing it separately
  * is what let the text area and the mark zone disagree.
+ *
+ * `fit` defaults to `cover` so nothing already proofed changes; `contain` is
+ * opted into one sticker at a time.
  */
 export const DEFAULT_TEMPLATE: LabelTemplate = {
+  fit: 'cover',
+  background: AUTO_BACKGROUND,
   labelInsetIn: 0.153,
+  framePaddingIn: 0.25,
   labelHeightIn: 0.57,
   labelPaddingIn: 0.127,
   barcodeWidthIn: 1.273,
@@ -61,9 +92,16 @@ export interface TemplateField {
   step: number;
 }
 
-/** Drives the editor panel. Real units with sane clamps — never raw pixels. */
+/**
+ * Drives the editor panel. Real units with sane clamps — never raw pixels.
+ *
+ * Numeric fields only. `fit` and `background` are deliberately absent: they are
+ * per-sticker choices made against a full-size proof, so they live as controls
+ * in the detail overlay rather than as rows in a global template editor.
+ */
 export const TEMPLATE_FIELDS: readonly TemplateField[] = [
   { key: 'labelInsetIn', label: 'Label inset', unit: 'in', min: 0, max: 0.75, step: 0.005 },
+  { key: 'framePaddingIn', label: 'Frame padding', unit: 'in', min: 0.05, max: 1, step: 0.005 },
   { key: 'labelHeightIn', label: 'Label height', unit: 'in', min: 0.25, max: 2, step: 0.01 },
   { key: 'labelPaddingIn', label: 'Inner padding', unit: 'in', min: 0, max: 0.5, step: 0.005 },
   { key: 'barcodeWidthIn', label: 'Barcode width', unit: 'in', min: 0.5, max: 2.5, step: 0.01 },

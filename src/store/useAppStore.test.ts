@@ -494,3 +494,91 @@ describe('the maximized view', () => {
     expect(useAppStore.getState().detail).toBeNull();
   });
 });
+
+/**
+ * The first write path into overrides.
+ *
+ * Split in two deliberately: a colour picker fires continuously while it is
+ * dragged, so the proof follows every move in memory and the folder a sync
+ * client is watching sees exactly one write per decision.
+ */
+describe('setOverride and persistLibrary', () => {
+  function ready() {
+    const sticker = stickerFor('TheSun.png');
+    useAppStore.setState({
+      status: 'ready',
+      dir: handle,
+      files: ['TheSun.png'],
+      library: { ...emptyLibrary(), stickers: [sticker] },
+    });
+    return sticker;
+  }
+
+  const overridesOf = () => useAppStore.getState().library!.stickers[0].overrides;
+
+  it('patches one sticker without writing anything', () => {
+    ready();
+    useAppStore.getState().setOverride('TheSun.png', { fit: 'contain' });
+
+    expect(overridesOf().fit).toBe('contain');
+    expect(vi.mocked(library.writeLibrary)).not.toHaveBeenCalled();
+  });
+
+  it('merges rather than replaces', () => {
+    ready();
+    useAppStore.getState().setOverride('TheSun.png', { fit: 'contain' });
+    useAppStore.getState().setOverride('TheSun.png', { background: '#e8d5b0' });
+
+    expect(overridesOf()).toEqual({ fit: 'contain', background: '#e8d5b0' });
+  });
+
+  it('deletes the key when the value is undefined, so the field inherits', () => {
+    ready();
+    useAppStore.getState().setOverride('TheSun.png', { background: '#e8d5b0' });
+    useAppStore.getState().setOverride('TheSun.png', { background: undefined });
+
+    expect('background' in overridesOf()).toBe(false);
+  });
+
+  it('leaves the other stickers alone', () => {
+    ready();
+    useAppStore.setState({
+      library: {
+        ...useAppStore.getState().library!,
+        stickers: [stickerFor('TheSun.png'), stickerFor('TheMoon.png')],
+      },
+    });
+    useAppStore.getState().setOverride('TheSun.png', { fit: 'contain' });
+
+    expect(useAppStore.getState().library!.stickers[1].overrides).toEqual({});
+  });
+
+  it('ignores a sticker id that is not there', () => {
+    ready();
+    expect(() => useAppStore.getState().setOverride('Nope.png', { fit: 'contain' })).not.toThrow();
+    expect(overridesOf()).toEqual({});
+  });
+
+  it('writes the whole overlay once when the edit settles', async () => {
+    ready();
+    useAppStore.getState().setOverride('TheSun.png', { fit: 'contain' });
+    await useAppStore.getState().persistLibrary();
+
+    expect(vi.mocked(library.writeLibrary)).toHaveBeenCalledTimes(1);
+    const [, written] = vi.mocked(library.writeLibrary).mock.calls[0];
+    expect((written as typeof pristine.library)!.stickers[0].overrides.fit).toBe('contain');
+  });
+
+  it('reports a failed write as a notice rather than throwing it away', async () => {
+    ready();
+    vi.mocked(library.writeLibrary).mockRejectedValueOnce(new Error('Folder is read-only.'));
+    await useAppStore.getState().persistLibrary();
+
+    expect(useAppStore.getState().notices).toEqual(['Folder is read-only.']);
+  });
+
+  it('does nothing at all with no folder open', async () => {
+    await useAppStore.getState().persistLibrary();
+    expect(vi.mocked(library.writeLibrary)).not.toHaveBeenCalled();
+  });
+});

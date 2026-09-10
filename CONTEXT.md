@@ -51,6 +51,29 @@ A sparse patch on top of the template, held per sticker (and rarely per
 variant). An absent key inherits. Reverting a field deletes the key.
 _Avoid_: per-sticker layout, custom layout
 
+**Fit**:
+How a **Master** fills the sticker. `cover` crops it to fill all 4×6 and
+floats the label strip over the artwork; `contain` shrinks it so all of it
+shows and puts the label below it on a **Background**. A property of the
+**Template**, so a sticker opts in with an **Override** (ADR-0005).
+_Avoid_: crop mode, letterbox, scale mode
+
+**Frame**:
+The margin around a contained composition, and the floor for the three equal
+vertical gaps — above the artwork, between artwork and label, below the
+label. The gaps are DERIVED from what the artwork did not use, so the frame
+padding is their minimum, never their value.
+_Avoid_: margin, inset (the label inset is a different, cover-only field),
+gutter, padding on its own
+
+**Background**:
+The colour behind a contained **Master**. `auto` — the default — samples the
+median of the master's outermost pixel ring, because the background is a mat
+and what reads as cohesive is continuity with the artwork's own edge. A
+picked colour is stored as a hex **Override**; clearing it returns to auto.
+A sampled colour is never written down.
+_Avoid_: fill, matte, canvas colour, backdrop
+
 **Master**:
 The source image, sitting directly in the library folder. Never modified; every
 rendering derives from it. Its filename is the sticker's identity (ADR-0003).
@@ -75,6 +98,8 @@ _Avoid_: Drive, the cloud, the repository
   **Basket**. The **Selection** is not the **Basket**.
 - **Marks** are independent of product type; type supplies only a default.
 - An **Override** patches the **Template** for one **Sticker**.
+- A **Sticker** is drawn at one **Fit**. Only `contain` shows the
+  **Background** and the **Frame**; under `cover` the artwork covers both.
 - A **UPC** is looked up from `upc-lookup.csv` by art name + size + type; a
   miss renders no barcode and is never fatal.
 - The **Library folder** holds every **Master** and one `stickers.json`, which

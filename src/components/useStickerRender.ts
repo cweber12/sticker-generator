@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LabelTemplate } from '@/config/template';
 import { loadMasterImage } from '@/fs/library';
-import { computeLabelGeometry, type Marks } from '@/render/slots';
+import { computeStickerGeometry, type Marks } from '@/render/slots';
 import { loadDiamondLogo, renderSticker } from '@/render/renderSticker';
 
 /**
@@ -78,7 +78,9 @@ export function useStickerRender(input: StickerRenderInput): StickerRenderResult
         // Asking slots.ts rather than measuring the canvas: the mark layout has
         // exactly one implementation and this is not a second one.
         const aspect = logo && logo.height > 0 ? logo.width / logo.height : 1;
-        setOverflow(computeLabelGeometry(template, marks, aspect).overflow);
+        setOverflow(
+          computeStickerGeometry(template, marks, aspect, master.width, master.height).overflow,
+        );
 
         canvas.className = canvasClassName;
         hostRef.current.replaceChildren(canvas);
