@@ -56,7 +56,8 @@ src/
   fs/          folder (pick + remember), library (stickers.json + the images), upcLookup
   lib/         helpers (parseFilename, normalize, zip)
   store/       Zustand store (useAppStore.ts)
-  components/  FolderGate, RequestBar, StickerGrid, StickerCard, BasketPanel
+  components/  FolderGate, RequestBar, StickerGrid, StickerCard, StickerDetail,
+               BasketPanel, useStickerRender (the shared render effect)
   types/       shared types (index.ts)
 ```
 
@@ -76,9 +77,11 @@ is the only filter.
 - **Slot math lives in `render/slots.ts`** and nowhere else. If you need to know
   where something sits inside the label, call `computeLabelGeometry`. Do not
   recompute label positions in a component, in the PDF writer, or in a test.
-- **One render path.** `renderSticker` serves both the grid preview and the
-  print export; `scale` is the only difference. Do not add a second
-  implementation of the layout for any output format.
+- **One render path.** `renderSticker` serves the grid card, the basket column,
+  the maximized view and the print export; `scale` is the only difference. The
+  three on-screen surfaces reach it through `components/useStickerRender.ts`,
+  so a new surface calls that hook. Do not add a second implementation of the
+  layout for any output format.
 - **Fonts must be awaited.** Canvas silently substitutes a missing font. Always
   `await ensureFontsLoaded()` before drawing text, and surface `!ok` to the user.
 - **Overrides are sparse.** An absent key inherits the template. Revert is
