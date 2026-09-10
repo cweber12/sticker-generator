@@ -74,7 +74,6 @@ function memoryDir(name = 'library'): FileSystemDirectoryHandle {
   } as unknown as FileSystemDirectoryHandle;
 }
 
-const MARKS = { barcode: true, logo: false };
 
 const png = (name: string, body = 'bytes') => new File([body], name, { type: 'image/png' });
 
@@ -111,13 +110,12 @@ describe('listMasters', () => {
 
 describe('stickerFor', () => {
   it('takes its identity from the filename', async () => {
-    const sticker = stickerFor('01 - Sunset Beach_final.png', { barcode: false, logo: true });
+    const sticker = stickerFor('01 - Sunset Beach_final.png');
     expect(sticker).toMatchObject({
       id: '01 - Sunset Beach_final.png',
       masterFile: '01 - Sunset Beach_final.png',
       artName: 'Sunset Beach',
       slug: 'sunset-beach',
-      defaultMarks: { barcode: false, logo: true },
       overrides: {},
     });
   });
@@ -125,7 +123,7 @@ describe('stickerFor', () => {
   it('gives both machines the same id for the same file', () => {
     // Filenames, not UUIDs, so two people adopting the same synced image
     // independently agree on what to call it.
-    expect(stickerFor('Sunset.png', MARKS).id).toBe(stickerFor('Sunset.png', MARKS).id);
+    expect(stickerFor('Sunset.png').id).toBe(stickerFor('Sunset.png').id);
   });
 });
 
@@ -134,7 +132,7 @@ describe('syncLibrary', () => {
     const dir = memoryDir();
     await place(dir, png('Sunset Beach.png'), png('Harbour.jpg'));
 
-    const result = await syncLibrary(dir, await readLibrary(dir), MARKS);
+    const result = await syncLibrary(dir, await readLibrary(dir));
 
     expect(result.files).toEqual(['Harbour.jpg', 'Sunset Beach.png']);
     expect(result.adopted).toEqual(['Harbour.jpg', 'Sunset Beach.png']);
@@ -149,10 +147,10 @@ describe('syncLibrary', () => {
   it('picks up a file the other machine synced in, leaving the rest alone', async () => {
     const dir = memoryDir();
     await place(dir, png('Sunset Beach.png'));
-    const first = await syncLibrary(dir, await readLibrary(dir), MARKS);
+    const first = await syncLibrary(dir, await readLibrary(dir));
 
     await place(dir, png('Harbour.jpg'));
-    const second = await syncLibrary(dir, first.library, MARKS);
+    const second = await syncLibrary(dir, first.library);
 
     expect(second.adopted).toEqual(['Harbour.jpg']);
     expect(second.files).toEqual(['Harbour.jpg', 'Sunset Beach.png']);
@@ -162,9 +160,9 @@ describe('syncLibrary', () => {
   it('does not write when nothing changed, so two open tabs do not duel', async () => {
     const dir = memoryDir();
     await place(dir, png('Sunset Beach.png'));
-    const first = await syncLibrary(dir, await readLibrary(dir), MARKS);
+    const first = await syncLibrary(dir, await readLibrary(dir));
 
-    const second = await syncLibrary(dir, first.library, MARKS);
+    const second = await syncLibrary(dir, first.library);
 
     expect(second.adopted).toEqual([]);
     // Same object, and updatedAt untouched: no save happened.
@@ -177,7 +175,7 @@ describe('syncLibrary', () => {
     // throw away its overrides for good.
     const dir = memoryDir();
     await place(dir, png('Sunset Beach.png'));
-    const first = await syncLibrary(dir, await readLibrary(dir), MARKS);
+    const first = await syncLibrary(dir, await readLibrary(dir));
 
     const edited: Library = {
       ...first.library,
@@ -187,7 +185,7 @@ describe('syncLibrary', () => {
 
     // The file really vanishes, the way a sync client can make it.
     await dir.removeEntry('Sunset Beach.png');
-    const gone = await syncLibrary(dir, await readLibrary(dir), MARKS);
+    const gone = await syncLibrary(dir, await readLibrary(dir));
 
     expect(gone.files).toEqual([]);
     expect(gone.adopted).toEqual([]);
@@ -197,7 +195,7 @@ describe('syncLibrary', () => {
 
     // And when it comes back it re-links, overrides intact, not re-adopted.
     await place(dir, png('Sunset Beach.png'));
-    const back = await syncLibrary(dir, gone.library, MARKS);
+    const back = await syncLibrary(dir, gone.library);
     expect(back.files).toEqual(['Sunset Beach.png']);
     expect(back.adopted).toEqual([]);
     expect(back.library.stickers).toHaveLength(1);
@@ -294,7 +292,7 @@ describe('stickers.json round-trip', () => {
   it('reads back exactly what was written', async () => {
     const dir = memoryDir();
     await place(dir, png('Sunset Beach.png'));
-    const synced = await syncLibrary(dir, await readLibrary(dir), MARKS);
+    const synced = await syncLibrary(dir, await readLibrary(dir));
 
     const written = await writeLibrary(dir, synced.library);
     expect(await readLibrary(dir)).toEqual(written);
@@ -303,7 +301,7 @@ describe('stickers.json round-trip', () => {
   it('preserves fields a newer version of the app wrote', async () => {
     const dir = memoryDir();
     await place(dir, png('Sunset Beach.png'));
-    const synced = await syncLibrary(dir, await readLibrary(dir), MARKS);
+    const synced = await syncLibrary(dir, await readLibrary(dir));
 
     const written = await writeLibrary(dir, {
       ...synced.library,

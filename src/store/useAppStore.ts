@@ -1,8 +1,6 @@
 import { create } from 'zustand';
 import type { Filters, Library, Sticker, StickerRequest } from '@/types';
-import type { Marks } from '@/render/slots';
-import type { TypeId } from '@/config/variants';
-import { SIZES, TYPES, getType } from '@/config/variants';
+import { SIZES, TYPES } from '@/config/variants';
 import { buildStickerArchive, saveBlob } from '@/lib/zip';
 import {
   forgetFolderHandle,
@@ -158,7 +156,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (isSettled(get().status)) return;
 
     if (permitted) {
-      await open(handle, set, marksFor(get().filters.type));
+      await open(handle, set);
     } else {
       set({ status: 'needs-permission', pendingDir: handle });
     }
@@ -167,7 +165,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   connect: async () => {
     try {
       const handle = await pickLibraryFolder();
-      await open(handle, set, marksFor(get().filters.type));
+      await open(handle, set);
     } catch (error) {
       if (isPickerDismissal(error)) {
         // Chrome throws AbortError both when you dismiss the picker and when
@@ -188,7 +186,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!handle) return;
 
     if (await requestFolderAccess(handle)) {
-      await open(handle, set, marksFor(get().filters.type));
+      await open(handle, set);
     } else {
       set({
         status: 'needs-permission',
@@ -215,13 +213,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   importFiles: async (files) => {
-    const { dir, library, filters } = get();
+    const { dir, library } = get();
     if (!dir || !library || files.length === 0) return;
 
     set({ busy: true, notices: [] });
     try {
       const { copied, skipped, failures } = await copyIntoLibrary(dir, files);
-      const synced = await syncLibrary(dir, library, marksFor(filters.type));
+      const synced = await syncLibrary(dir, library);
 
       const notices = failures.map((f) => `${f.filename} could not be copied in: ${f.message}`);
       if (skipped.length > 0) {
@@ -246,12 +244,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   rescan: async () => {
-    const { dir, library, filters } = get();
+    const { dir, library } = get();
     if (!dir || !library) return;
 
     set({ busy: true, notices: [] });
     try {
-      const synced = await syncLibrary(dir, library, marksFor(filters.type));
+      const synced = await syncLibrary(dir, library);
       set({
         library: synced.library,
         files: synced.files,
@@ -343,14 +341,6 @@ const DISMISSED =
   'the top of your user folder or a drive root.';
 
 /**
- * Marks a newly adopted image starts with. Product type supplies only a
- * DEFAULT; the filter bar still decides what any given render shows.
- */
-function marksFor(type: TypeId): Marks {
-  return getType(type)?.defaultMarks ?? TYPES[0].defaultMarks;
-}
-
-/**
  * The library as the FOLDER defines it: present files in display order, paired
  * with their metadata. A record whose file is absent is skipped rather than
  * deleted — see ADR-0003.
@@ -377,14 +367,13 @@ type SetState = (partial: Partial<AppState>) => void;
 async function open(
   handle: FileSystemDirectoryHandle,
   set: SetState,
-  marks: Marks,
 ): Promise<void> {
   set({ status: 'connecting', error: null });
   clearMasterCache();
   try {
     // Read the overlay, then let the folder say what is actually in it.
     const library = await readLibrary(handle);
-    const synced = await syncLibrary(handle, library, marks);
+    const synced = await syncLibrary(handle, library);
     set({
       status: 'ready',
       dir: handle,

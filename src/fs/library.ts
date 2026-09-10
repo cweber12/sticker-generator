@@ -1,7 +1,6 @@
 import type { LabelTemplate } from '@/config/template';
 import { DEFAULT_TEMPLATE } from '@/config/template';
 import type { LabelOverride, Library, Sticker } from '@/types';
-import type { Marks } from '@/render/slots';
 import { parseFilename } from '@/lib/parseFilename';
 
 /**
@@ -106,7 +105,6 @@ export interface SyncResult {
 export async function syncLibrary(
   dir: FileSystemDirectoryHandle,
   library: Library,
-  defaultMarks: Marks,
 ): Promise<SyncResult> {
   const files = await listMasters(dir);
   const known = new Set(library.stickers.map((sticker) => sticker.masterFile));
@@ -116,7 +114,7 @@ export async function syncLibrary(
 
   const next = await writeLibrary(dir, {
     ...library,
-    stickers: [...library.stickers, ...adopted.map((file) => stickerFor(file, defaultMarks))],
+    stickers: [...library.stickers, ...adopted.map((file) => stickerFor(file))],
   });
 
   return { library: next, files, adopted };
@@ -130,7 +128,7 @@ export async function syncLibrary(
  * the same file agree on what to call it, so `stickers.json` stays readable
  * and diffable in the sync client's version history.
  */
-export function stickerFor(masterFile: string, defaultMarks: Marks): Sticker {
+export function stickerFor(masterFile: string): Sticker {
   const { artName, slug } = parseFilename(masterFile);
   const now = new Date().toISOString();
   return {
@@ -140,7 +138,6 @@ export function stickerFor(masterFile: string, defaultMarks: Marks): Sticker {
     masterFile,
     createdAt: now,
     updatedAt: now,
-    defaultMarks: { ...defaultMarks },
     overrides: {},
     variantOverrides: {},
   };
@@ -307,7 +304,6 @@ function normalizeSticker(raw: Record<string, unknown>): Sticker {
   const now = new Date().toISOString();
   const masterFile = str(raw.masterFile) ?? '';
   const artName = str(raw.artName) ?? parseFilename(masterFile).artName;
-  const marks = isRecord(raw.defaultMarks) ? raw.defaultMarks : {};
 
   return {
     ...raw,
@@ -319,10 +315,6 @@ function normalizeSticker(raw: Record<string, unknown>): Sticker {
     masterFile,
     createdAt: str(raw.createdAt) ?? now,
     updatedAt: str(raw.updatedAt) ?? now,
-    defaultMarks: {
-      barcode: marks.barcode !== false,
-      logo: marks.logo === true,
-    },
     // Overrides stay exactly as written. The editor (#24) owns validating them;
     // dropping keys we do not recognise is the one thing this must not do.
     overrides: (isRecord(raw.overrides) ? raw.overrides : {}) as LabelOverride,

@@ -402,8 +402,13 @@ Expected: PASS, 16 tests.
 
 - [ ] **Step 5: Verify the whole suite and commit**
 
+**Expected red:** `typecheck:test` reports `Property 'defaultMarks' is missing` for the
+fixture in `basket.test.ts`. That field only disappears in Task 2, and writing the
+fixture with a field the model is about to lose would be worse. Task 2 clears it.
+Everything else must be green.
+
 ```bash
-npm run test:run && npm run typecheck && npm run typecheck:test && npm run lint
+npm run test:run && npm run typecheck && npm run lint
 git add src/lib/basket.ts src/lib/basket.test.ts
 git commit -m "feat(lib): a basket is a set of sticker x variant keys"
 ```
@@ -463,7 +468,9 @@ In `src/types/index.ts`, delete these two lines from `interface Sticker`:
   defaultMarks: Marks;
 ```
 
-In the same file, replace `interface Filters` with:
+In the same file, **add** `Variant` beside the existing `Filters` — do not delete
+`Filters` yet, because the store still declares `filters: Filters` until Task 4 and
+removing it here stops the whole app compiling:
 
 ```ts
 /**
@@ -478,7 +485,8 @@ export interface Variant {
 }
 ```
 
-Remove the now-unused `Marks` import from `src/types/index.ts` if nothing else in the file uses it.
+Keep the `Marks` import — `Filters` still uses it. Task 4 deletes `Filters` and, with it,
+that import if nothing else needs it.
 
 In `src/fs/library.ts`:
 
@@ -777,6 +785,8 @@ Expected: FAIL — `addToBasket is not a function`.
 - [ ] **Step 3: Implement the store changes**
 
 Imports — add `import { addVariant, basketRequests, type RequestKey } from '@/lib/basket';`, keep `Marks` from `@/render/slots`, and swap `Filters` for `Variant` in the `@/types` import. `StickerRequest` is no longer built here, so drop it.
+
+Then delete `interface Filters` from `src/types/index.ts` — Task 2 added `Variant` beside it and this is the last reference. Drop the `Marks` import from that file if nothing else uses it.
 
 State — replace the `filters` field in `interface AppState`:
 
