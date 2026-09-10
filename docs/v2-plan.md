@@ -130,13 +130,15 @@ One screen.
 │  Sticker Generator          📁 Client Stickers   [Import]  │
 ├────────────────────────────────────────────────────────────┤
 │  Size: [8x10][10x12][16x20]   Type: [DAK][PBN]             │
-│  ☑ Barcode  ☐ Diamond logo          12 selected  [Download]│
-├────────────────────────────────────────────────────────────┤
-│   ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐        │
-│   └──────┘  └──────┘  └──────┘  └──────┘  └──────┘        │
-│   ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐        │
-│   └──────┘  └──────┘  └──────┘  └──────┘  └──────┘        │
-└────────────────────────────────────────────────────────────┘
+│  ☑ Barcode ☐ Logo   3 selected [Add to basket][Basket 7·9] │
+├──────────────────────────────────────────┬─────────────────┤
+│   ┌──────┐  ┌──────┐  ┌──────┐           │ Basket    7 · 9 │
+│   │☑   2 │  │☐     │  │☑   1 │           │ ▣ Sunset Beach  │
+│   └──────┘  └──────┘  └──────┘           │    16x20 Diamo… │
+│   ┌──────┐  ┌──────┐  ┌──────┐           │ ▣ Harbour Light │
+│   └──────┘  └──────┘  └──────┘           │    10x12 Diamo… │
+│                                          │ [ Download ]    │
+└──────────────────────────────────────────┴─────────────────┘
 ```
 
 There is no "new batch" versus "library" split. Importing images adds them to
@@ -179,9 +181,11 @@ src/
 ├── lib/
 │   ├── parseFilename.ts  ✅ filename → art name (tested)
 │   ├── normalize.ts      ✅ slug + lookup key (tested)
-│   └── zip.ts            ⬜ build the download archive
-├── store/useAppStore.ts  ⬜ stickers, filters, selection, template
-└── components/           ⬜ FolderGate, FilterBar, StickerGrid, EditorPanel
+│   ├── basket.ts         ✅ sticker × variant keys, ordering (tested)
+│   └── zip.ts            ✅ build the download archive
+├── store/useAppStore.ts  ✅ stickers, variant, marks, selection, basket
+└── components/           ✅ FolderGate, RequestBar, StickerGrid, BasketPanel
+                          ⬜ EditorPanel
 ```
 
 ✅ = phase 1, done and passing CI.
@@ -195,8 +199,11 @@ src/
    the folder.
 2. **Grid + filters.** Filter bar, grid at two-row sizing, low-res previews,
    selection.
-3. **Download.** Selected requests → full-res render → ZIP. **This is the point
-   the tool becomes useful — stop and use it before continuing.**
+3. **Download.** ✅ The **basket** → full-res render → ZIP. The basket is a set
+   of `Sticker × Variant`, so one order can ask for different stickers at
+   different sizes and types, and the same artwork at more than one — see
+   `docs/adr/0004-the-basket-of-requests.md`. **This is the point the tool
+   becomes useful — stop and use it before continuing.**
 4. **Editor.** Text fields, mark toggles, sparse geometry overrides, revert.
 5. **UPC lookup.** Parse the CSV, badge the misses.
 

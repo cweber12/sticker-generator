@@ -3,6 +3,7 @@ import type { LabelTemplate } from '@/config/template';
 import type { SizeId, TypeId } from '@/config/variants';
 import { getSize, getType, variantKey } from '@/config/variants';
 import { loadMasterImage } from '@/fs/library';
+import { requestKey, type RequestKey } from '@/lib/basket';
 import { loadDiamondLogo, renderSticker } from '@/render/renderSticker';
 import { canvasToStickerPdf } from '@/render/toPdf';
 import type { Sticker, StickerRequest } from '@/types';
@@ -36,6 +37,14 @@ export interface Archive {
   filename: string;
   /** How many PDFs are actually in the archive. */
   count: number;
+  /**
+   * The basket entries that really made it in.
+   *
+   * Identity, not a label: the caller empties exactly these from the basket
+   * and leaves the failures behind, so a master that was mid-sync costs one
+   * more press of Download rather than a re-assembled order.
+   */
+  succeeded: RequestKey[];
   failures: ArchiveFailure[];
 }
 
@@ -46,6 +55,7 @@ export async function buildStickerArchive(
   const zip = new JSZip();
   const taken = new Set<string>();
   const failures: ArchiveFailure[] = [];
+  const succeeded: RequestKey[] = [];
   let count = 0;
 
   for (const request of requests) {
@@ -90,6 +100,7 @@ export async function buildStickerArchive(
       taken.add(filename);
       zip.file(filename, pdf);
       count += 1;
+      succeeded.push(requestKey(request.stickerId, request.size, request.type));
     } catch (error) {
       failures.push({
         label,
@@ -102,6 +113,7 @@ export async function buildStickerArchive(
     blob: count > 0 ? await zip.generateAsync({ type: 'blob' }) : null,
     filename: archiveFilename(),
     count,
+    succeeded,
     failures,
   };
 }

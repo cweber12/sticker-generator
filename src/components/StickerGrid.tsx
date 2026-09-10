@@ -3,7 +3,8 @@ import type { ReactNode } from 'react';
 import StickerCard from './StickerCard';
 import type { LabelTemplate } from '@/config/template';
 import type { Marks } from '@/render/slots';
-import { variantKey } from '@/config/variants';
+import { SIZES, TYPES, variantKey } from '@/config/variants';
+import { requestKey } from '@/lib/basket';
 import { useAppStore } from '@/store/useAppStore';
 import type { Sticker } from '@/types';
 import { resolveLabelText, resolveTemplate, upcFor } from '@/types';
@@ -30,15 +31,25 @@ export default function StickerGrid({ visible, visibleIds, empty }: StickerGridP
   const dir = useAppStore((s) => s.dir);
   const stickers = useAppStore((s) => s.library?.stickers);
   const template = useAppStore((s) => s.library?.template);
-  const filters = useAppStore((s) => s.filters);
+  const variant = useAppStore((s) => s.variant);
+  const marks = useAppStore((s) => s.marks);
+  const basket = useAppStore((s) => s.basket);
   const search = useAppStore((s) => s.search);
   const selected = useAppStore((s) => s.selected);
   const upcs = useAppStore((s) => s.upcs);
   const clickSticker = useAppStore((s) => s.clickSticker);
+  const openDetail = useAppStore((s) => s.openDetail);
 
-  // Renders are the expensive part, so they follow the settled filter rather
+  // Renders are the expensive part, so they follow the settled request rather
   // than every intermediate one. The buttons themselves stay instant.
-  const settled = useDebounced(filters, FILTER_SETTLE_MS);
+  //
+  // Memoised, and it MUST be: `useDebounced` keys its timer on the identity of
+  // what it is given, so a fresh object each render makes it re-arm on every
+  // render and set new state 120ms later — which renders again. That loop
+  // replaced every canvas in the grid twice a second, and a click whose
+  // mousedown and mouseup straddled a replacement never fired.
+  const request = useMemo(() => ({ ...variant, ...marks }), [variant, marks]);
+  const settled = useDebounced(request, FILTER_SETTLE_MS);
 
   /**
    * Render inputs for every sticker, keyed by id.
@@ -68,6 +79,26 @@ export default function StickerGrid({ visible, visibleIds, empty }: StickerGridP
     }
     return byId;
   }, [stickers, template, settled, upcs]);
+
+  /**
+   * How many variants of each sticker sit in the basket. Built once for the
+   * whole grid rather than scanned per card, so a forty-card grid does not do
+   * forty passes over the basket on every paint.
+   */
+  const basketCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (!stickers) return counts;
+    for (const sticker of stickers) {
+      let n = 0;
+      for (const size of SIZES) {
+        for (const type of TYPES) {
+          if (basket.has(requestKey(sticker.id, size.id, type.id))) n += 1;
+        }
+      }
+      if (n > 0) counts.set(sticker.id, n);
+    }
+    return counts;
+  }, [stickers, basket]);
 
   if (!dir) return null;
 
@@ -101,7 +132,11 @@ export default function StickerGrid({ visible, visibleIds, empty }: StickerGridP
             marks={inputs.marks}
             upc={inputs.upc}
             selected={selected.has(sticker.id)}
+            basketCount={basketCounts.get(sticker.id) ?? 0}
             onSelect={(id, shift) => clickSticker(id, visibleIds, shift)}
+            onOpen={(id) =>
+              openDetail({ stickerId: id, size: settled.size, type: settled.type, from: 'grid' })
+            }
           />
         );
       })}
@@ -125,6 +160,12 @@ function Empty({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * The value, `ms` after it last changed.
+ *
+ * Compares by IDENTITY. Anything passed here has to be stable between renders
+ * — a store object, or something memoised — or it re-arms forever.
+ */
 function useDebounced<T>(value: T, ms: number): T {
   const [settled, setSettled] = useState(value);
   useEffect(() => {

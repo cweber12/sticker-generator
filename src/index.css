@@ -64,6 +64,9 @@ body,
   display: grid;
   gap: var(--gap);
   padding: var(--gap);
+  /* The basket panel takes width, not height, so cards keep their size and
+     the column count simply drops. This stops the grid overflowing the row. */
+  min-width: 0;
   grid-template-columns: repeat(auto-fill, minmax(calc(var(--card-h) * 2 / 3), 1fr));
   grid-auto-rows: var(--card-h);
 }

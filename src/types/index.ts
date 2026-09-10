@@ -1,5 +1,4 @@
 import type { LabelTemplate } from '@/config/template';
-import type { Marks } from '@/render/slots';
 import type { SizeId, TypeId, VariantKey } from '@/config/variants';
 import { defaultSubtitle, variantKey } from '@/config/variants';
 
@@ -31,8 +30,6 @@ export interface Sticker {
   masterFile: string;
   createdAt: string;
   updatedAt: string;
-  /** Marks pre-selected for this sticker. The filter bar can still override. */
-  defaultMarks: Marks;
   /**
    * SPARSE. A key that is absent inherits the global template, so reverting a
    * field is `delete overrides[key]` — exact, not "restore a remembered value".
@@ -55,14 +52,15 @@ export interface StickerRequest {
 }
 
 /**
- * What the user is currently asking to see. Filters describe a REQUEST, never
- * a sticker: changing one must not mutate anything persistent.
+ * The Variant everything is currently drawn as, and that Add will use.
+ *
+ * NOT a filter: changing it removes no card from the grid. Search is the only
+ * filter. Marks are deliberately absent — they belong to the download, not to
+ * a request. See docs/adr/0004-the-basket-of-requests.md.
  */
-export interface Filters {
+export interface Variant {
   size: SizeId;
   type: TypeId;
-  barcode: boolean;
-  logo: boolean;
 }
 
 /** The whole index, as stored in stickers.json at the library folder root. */

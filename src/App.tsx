@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import FolderGate from '@/components/FolderGate';
-import FilterBar from '@/components/FilterBar';
+import RequestBar from '@/components/RequestBar';
+import BasketPanel from '@/components/BasketPanel';
+import StickerDetail from '@/components/StickerDetail';
 import StickerGrid from '@/components/StickerGrid';
 import { ensureFontsLoaded, type FontStatus } from '@/render/fonts';
 import { matchesSearch, presentStickers, useAppStore } from '@/store/useAppStore';
@@ -56,7 +58,7 @@ function LibraryScreen() {
         <ImportButton />
       </header>
 
-      <FilterBar visibleIds={visibleIds} />
+      <RequestBar visibleIds={visibleIds} />
 
       <FontWarning />
 
@@ -77,7 +79,12 @@ function LibraryScreen() {
         </div>
       )}
 
-      <StickerGrid visible={visible} visibleIds={visibleIds} empty={files.length === 0} />
+      <div className="flex min-h-0 flex-1">
+        <StickerGrid visible={visible} visibleIds={visibleIds} empty={files.length === 0} />
+        <BasketPanel />
+      </div>
+
+      <StickerDetail />
     </div>
   );
 }
