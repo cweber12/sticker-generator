@@ -40,9 +40,16 @@ export default function StickerGrid({ visible, visibleIds, empty }: StickerGridP
   const clickSticker = useAppStore((s) => s.clickSticker);
   const openDetail = useAppStore((s) => s.openDetail);
 
-  // Renders are the expensive part, so they follow the settled filter rather
+  // Renders are the expensive part, so they follow the settled request rather
   // than every intermediate one. The buttons themselves stay instant.
-  const settled = useDebounced({ ...variant, ...marks }, FILTER_SETTLE_MS);
+  //
+  // Memoised, and it MUST be: `useDebounced` keys its timer on the identity of
+  // what it is given, so a fresh object each render makes it re-arm on every
+  // render and set new state 120ms later — which renders again. That loop
+  // replaced every canvas in the grid twice a second, and a click whose
+  // mousedown and mouseup straddled a replacement never fired.
+  const request = useMemo(() => ({ ...variant, ...marks }), [variant, marks]);
+  const settled = useDebounced(request, FILTER_SETTLE_MS);
 
   /**
    * Render inputs for every sticker, keyed by id.
@@ -153,6 +160,12 @@ function Empty({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * The value, `ms` after it last changed.
+ *
+ * Compares by IDENTITY. Anything passed here has to be stable between renders
+ * — a store object, or something memoised — or it re-arms forever.
+ */
 function useDebounced<T>(value: T, ms: number): T {
   const [settled, setSettled] = useState(value);
   useEffect(() => {
