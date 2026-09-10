@@ -10,6 +10,7 @@ const dir = { kind: 'directory', name: 'Client Stickers' } as FileSystemDirector
 
 function renderCard(overrides: Partial<ComponentProps<typeof StickerCard>> = {}) {
   const onSelect = vi.fn();
+  const onOpen = vi.fn();
   render(
     <StickerCard
       sticker={stickerFor('Sunset Beach.png')}
@@ -22,27 +23,42 @@ function renderCard(overrides: Partial<ComponentProps<typeof StickerCard>> = {})
       selected={false}
       basketCount={0}
       onSelect={onSelect}
+      onOpen={onOpen}
       {...overrides}
     />,
   );
-  return { onSelect };
+  return { onSelect, onOpen };
 }
 
 describe('StickerCard', () => {
-  it('selects when the card is clicked', async () => {
-    // Slice A keeps the whole card as the select target. Slice B moves it to
-    // the checkbox, once clicking the image has a detail view to open.
-    const { onSelect } = renderCard();
-    await userEvent.click(screen.getByRole('button', { name: /Sunset Beach/ }));
+  it('ticks the sticker when the checkbox is clicked', async () => {
+    const { onSelect, onOpen } = renderCard();
+    await userEvent.click(screen.getByRole('checkbox', { name: /Select Sunset Beach/ }));
     expect(onSelect).toHaveBeenCalledWith('Sunset Beach.png', false);
+    // The checkbox sits on top of the image; a tick must not also maximize.
+    expect(onOpen).not.toHaveBeenCalled();
   });
 
-  it('reports its selected state to assistive technology', () => {
+  it('passes shift through, so a range can be filled from the checkbox', async () => {
+    // One session, or the held modifier is dropped between calls.
+    const user = userEvent.setup();
+    const { onSelect } = renderCard();
+    await user.keyboard('{Shift>}');
+    await user.click(screen.getByRole('checkbox', { name: /Select Sunset Beach/ }));
+    await user.keyboard('{/Shift}');
+    expect(onSelect).toHaveBeenCalledWith('Sunset Beach.png', true);
+  });
+
+  it('opens the maximized view when the image is clicked', async () => {
+    const { onOpen, onSelect } = renderCard();
+    await userEvent.click(screen.getByRole('button', { name: /click to view full size/ }));
+    expect(onOpen).toHaveBeenCalledWith('Sunset Beach.png');
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('reports its ticked state to assistive technology', () => {
     renderCard({ selected: true });
-    expect(screen.getByRole('button', { name: /Sunset Beach/ })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    expect(screen.getByRole('checkbox', { name: /Select Sunset Beach/ })).toBeChecked();
   });
 
   it('says how many variants of it are in the basket', () => {

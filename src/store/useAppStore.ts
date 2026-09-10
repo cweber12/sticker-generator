@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import type { Library, Sticker, Variant } from '@/types';
 import type { Marks } from '@/render/slots';
-import { addVariant, basketRequests, type RequestKey } from '@/lib/basket';
+import { addVariant, basketRequests, parseRequestKey, type RequestKey } from '@/lib/basket';
+import type { SizeId, TypeId } from '@/config/variants';
 import { SIZES, TYPES } from '@/config/variants';
 import { buildStickerArchive, saveBlob } from '@/lib/zip';
 import {
@@ -35,6 +36,21 @@ export type ConnectionStatus =
   | 'ready'
   | 'error';
 
+/**
+ * What the maximized view is showing.
+ *
+ * A Sticker plus a Variant — the same pair a basket entry is — because you
+ * open it to check one specific rendering. `from` decides what the arrows
+ * walk: the basket entries when you came from the basket, the visible grid at
+ * a fixed variant when you came from a card.
+ */
+export interface DetailTarget {
+  stickerId: string;
+  size: SizeId;
+  type: TypeId;
+  from: 'basket' | 'grid';
+}
+
 interface AppState {
   status: ConnectionStatus;
   /** The library folder. Non-null exactly when status is 'ready'. */
@@ -67,6 +83,14 @@ interface AppState {
   basket: ReadonlySet<RequestKey>;
   /** Whether the basket panel is open beside the grid. */
   basketOpen: boolean;
+  /**
+   * The sticker being looked at full size, or null.
+   *
+   * It carries its OWN variant rather than reading the bar's, because a basket
+   * row opens at the variant that row is for and the grid must not follow it
+   * there. `from` says which list the arrows walk.
+   */
+  detail: DetailTarget | null;
   /** Free text matched against art names. */
   search: string;
   /** Stickers ticked in the grid. Staging: what the next Add will use. */
@@ -104,6 +128,11 @@ interface AppState {
   removeFromBasket: (key: RequestKey) => void;
   emptyBasket: () => void;
   toggleBasket: () => void;
+
+  openDetail: (target: DetailTarget) => void;
+  closeDetail: () => void;
+  /** Walks the list `detail.from` names. Clamps at both ends. */
+  stepDetail: (delta: number) => void;
   setSearch: (search: string) => void;
 
   /** Plain click toggles one card; shift-click fills the range from the anchor. */
@@ -148,6 +177,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   marks: { ...TYPES[0].defaultMarks },
   basket: new Set<RequestKey>(),
   basketOpen: false,
+  detail: null,
   search: '',
   selected: new Set<string>(),
   anchorId: null,
@@ -229,6 +259,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       search: '',
       basket: new Set<RequestKey>(),
       basketOpen: false,
+      detail: null,
     });
   },
 
@@ -337,11 +368,38 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => {
       const next = new Set(s.basket);
       next.delete(key);
-      return { basket: next };
+      const parsed = parseRequestKey(key);
+      const looking =
+        s.detail?.from === 'basket' &&
+        parsed !== null &&
+        s.detail.stickerId === parsed.stickerId &&
+        s.detail.size === parsed.size &&
+        s.detail.type === parsed.type;
+      return { basket: next, detail: looking ? null : s.detail };
     }),
 
-  emptyBasket: () => set({ basket: new Set<RequestKey>() }),
+  emptyBasket: () => set({ basket: new Set<RequestKey>(), detail: null }),
   toggleBasket: () => set((s) => ({ basketOpen: !s.basketOpen })),
+
+  openDetail: (target) => set({ detail: target }),
+  closeDetail: () => set({ detail: null }),
+
+  stepDetail: (delta) => {
+    const { detail } = get();
+    if (!detail) return;
+
+    const list = detailList(get(), detail.from);
+    const at = list.findIndex(
+      (t) =>
+        t.stickerId === detail.stickerId && t.size === detail.size && t.type === detail.type,
+    );
+    if (at === -1) return;
+
+    // Clamped, not wrapped: running off the end of an order is how you know
+    // you have proofed all of it.
+    const next = list[Math.min(Math.max(at + delta, 0), list.length - 1)];
+    set({ detail: { ...next, from: detail.from } });
+  },
   setSearch: (search) => set({ search }),
 
   clickSticker: (id, visibleIds, shift) => {
@@ -397,6 +455,30 @@ export function presentStickers(
     .filter((sticker): sticker is Sticker => sticker !== undefined);
 }
 
+/**
+ * The ordered list `stepDetail` walks.
+ *
+ * From the basket: every ENTRY, in the same order the ZIP will hold them, so
+ * one pass proofs the whole order. From the grid: the stickers the search box
+ * currently admits, all at the bar's variant.
+ */
+function detailList(
+  state: Pick<AppState, 'library' | 'files' | 'basket' | 'variant' | 'search'>,
+  from: 'basket' | 'grid',
+): { stickerId: string; size: SizeId; type: TypeId }[] {
+  const present = presentStickers(state.library, state.files);
+
+  if (from === 'basket') {
+    return basketRequests(state.basket, present, { barcode: false, logo: false }).map(
+      ({ stickerId, size, type }) => ({ stickerId, size, type }),
+    );
+  }
+
+  return present
+    .filter((sticker) => matchesSearch(sticker, state.search))
+    .map((sticker) => ({ stickerId: sticker.id, size: state.variant.size, type: state.variant.type }));
+}
+
 /** A folder is already open, or in the middle of opening. */
 function isSettled(status: ConnectionStatus): boolean {
   return status === 'ready' || status === 'connecting';
@@ -425,6 +507,7 @@ async function open(
       selected: new Set<string>(),
       anchorId: null,
       basket: new Set<RequestKey>(),
+      detail: null,
     });
   } catch (error) {
     // A folder we cannot read is not a folder we should pretend to be in.

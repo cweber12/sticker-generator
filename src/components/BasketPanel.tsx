@@ -1,18 +1,39 @@
-import { useEffect, useMemo, useRef } from 'react';
-import { getSize, getType } from '@/config/variants';
-import { loadMasterImage } from '@/fs/library';
+import { useMemo, useState } from 'react';
+import { getSize, getType, variantKey } from '@/config/variants';
+import type { SizeId, TypeId } from '@/config/variants';
 import { groupBasket, type BasketGroup } from '@/lib/basket';
+import { DEFAULT_TEMPLATE } from '@/config/template';
 import { presentStickers, useAppStore } from '@/store/useAppStore';
+import type { Sticker } from '@/types';
+import { resolveLabelText, resolveTemplate, upcFor } from '@/types';
+import { useStickerRender } from './useStickerRender';
 
 /**
  * The basket, read before it ships.
  *
  * Download lives here and nowhere else, so opening the basket IS reviewing it.
- * Rows are grouped by sticker: one thumbnail answers "is this the right
- * artwork?", and the variant lines answer "is this the right size and type?" —
- * which a preview cannot, since every variant draws the same 4x6 label and
- * only the subtitle differs.
+ * One image per sticker, drawn as whichever of its variants is currently
+ * chosen beneath it — because the size and type are printed INSIDE the label,
+ * so the render is what proves the variant, not a caption next to it.
+ *
+ * Two different clicks on a variant line: the line itself chooses what the
+ * image shows, and the ✕ takes it out of the order. Keeping those apart is
+ * what stops someone deleting a request while trying to look at it.
  */
+
+/**
+ * Enough smaller than a grid card that four fit on screen. A grid card is
+ * ~448px tall on a 1080px display; at grid size two basket entries would fill
+ * the panel and the surface meant for checking an order at a glance would need
+ * scrolling to see half of it.
+ */
+const BASKET_CARD_H = 'h-[clamp(150px,27dvh,290px)]';
+
+const CANVAS_CLASS = 'block h-full w-auto max-w-full rounded';
+
+/** Same 300 dpi render as a grid card; CSS decides how big it lands. */
+const PREVIEW_SCALE = 0.2;
+
 export default function BasketPanel() {
   const open = useAppStore((s) => s.basketOpen);
   const basket = useAppStore((s) => s.basket);
@@ -24,10 +45,8 @@ export default function BasketPanel() {
   const downloadBasket = useAppStore((s) => s.downloadBasket);
   const toggleBasket = useAppStore((s) => s.toggleBasket);
 
-  const groups = useMemo(
-    () => groupBasket(basket, presentStickers(library, files)),
-    [basket, library, files],
-  );
+  const present = useMemo(() => presentStickers(library, files), [library, files]);
+  const groups = useMemo(() => groupBasket(basket, present), [basket, present]);
 
   if (!open) return null;
 
@@ -52,16 +71,16 @@ export default function BasketPanel() {
         </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-3 py-2">
+      <div className="flex-1 overflow-y-auto px-3 py-3">
         {groups.length === 0 ? (
           <p className="py-8 text-center text-sm text-[var(--color-ink-3)]">
             Nothing here yet. Tick some stickers, choose a size and type, and press{' '}
             <strong>Add to basket</strong>.
           </p>
         ) : (
-          <ul className="space-y-3">
+          <ul className="space-y-4">
             {groups.map((group) => (
-              <Row key={group.stickerId} group={group} onRemove={removeFromBasket} />
+              <Entry key={group.stickerId} group={group} onRemove={removeFromBasket} />
             ))}
           </ul>
         )}
@@ -89,91 +108,117 @@ export default function BasketPanel() {
   );
 }
 
-function Row({ group, onRemove }: { group: BasketGroup; onRemove: (key: string) => void }) {
-  const missing = group.sticker === null;
+function Entry({ group, onRemove }: { group: BasketGroup; onRemove: (key: string) => void }) {
+  // Which of this sticker's variants the image is showing. Display only — it
+  // never touches the order.
+  const [shown, setShown] = useState(0);
+  const entry = group.entries[Math.min(shown, group.entries.length - 1)];
 
   return (
-    <li className={missing ? 'opacity-50' : undefined}>
-      <div className="flex items-center gap-2">
-        <Thumb masterFile={group.sticker?.masterFile ?? null} />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium" title={group.stickerId}>
-            {group.sticker?.artName ?? group.stickerId}
-          </p>
+    <li className={group.sticker === null ? 'opacity-50' : undefined}>
+      {group.sticker === null ? (
+        <div
+          className={`grid ${BASKET_CARD_H} w-full place-items-center rounded border border-dashed border-[var(--color-rule)] px-3 text-center text-xs text-[var(--color-ink-3)]`}
+        >
           {/* ADR-0003: absence may be the sync client mid-write, so the entry
               stays. Download skips it and it is still here to retry. */}
-          {missing && (
-            <p className="text-[11px] text-[var(--color-ink-3)]">not in the folder right now</p>
-          )}
+          <span>
+            <strong className="block truncate">{group.stickerId}</strong>
+            not in the folder right now
+          </span>
         </div>
-      </div>
+      ) : (
+        <Preview sticker={group.sticker} size={entry.size} type={entry.type} />
+      )}
 
-      <ul className="mt-1 ml-10 space-y-0.5">
-        {group.entries.map((entry) => (
-          <li key={entry.key} className="flex items-center gap-2 text-xs text-[var(--color-ink-2)]">
-            <span className="flex-1 truncate">
-              {getSize(entry.size)?.id ?? entry.size} {getType(entry.type)?.label ?? entry.type}
-            </span>
-            <button
-              type="button"
-              onClick={() => onRemove(entry.key)}
-              aria-label={`Remove ${entry.size} ${entry.type}`}
-              className="text-[var(--color-ink-4)] hover:text-[var(--color-ink)]"
-            >
-              ✕
-            </button>
-          </li>
-        ))}
+      <ul className="mt-1.5 space-y-0.5">
+        {group.entries.map((e, index) => {
+          const chosen = index === Math.min(shown, group.entries.length - 1);
+          return (
+            <li key={e.key} className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setShown(index)}
+                aria-pressed={chosen}
+                title="Show this variant in the preview above"
+                className={`flex-1 truncate rounded px-1.5 py-0.5 text-left text-xs ${
+                  chosen
+                    ? 'bg-[var(--color-paper-2)] font-medium text-[var(--color-ink)]'
+                    : 'text-[var(--color-ink-3)] hover:bg-[var(--color-paper-2)]'
+                }`}
+              >
+                {getSize(e.size)?.id ?? e.size} {getType(e.type)?.label ?? e.type}
+              </button>
+              <button
+                type="button"
+                onClick={() => onRemove(e.key)}
+                aria-label={`Remove ${e.size} ${e.type} from the basket`}
+                title="Remove from the basket"
+                className="px-1 text-[var(--color-ink-4)] hover:text-[var(--color-ink)]"
+              >
+                ✕
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </li>
   );
 }
 
 /**
- * The master, not a rendered sticker: the question a thumbnail answers is
- * "which artwork is this?". `loadMasterImage` caches its bitmaps, so this
- * costs no extra disk read.
+ * The chosen variant, drawn through the same path as the grid and the PDF, and
+ * a click away from being full size.
  */
-function Thumb({ masterFile }: { masterFile: string | null }) {
-  const ref = useRef<HTMLCanvasElement>(null);
+function Preview({
+  sticker,
+  size,
+  type,
+}: {
+  sticker: Sticker;
+  size: SizeId;
+  type: TypeId;
+}) {
   const dir = useAppStore((s) => s.dir);
+  const template = useAppStore((s) => s.library?.template);
+  const marks = useAppStore((s) => s.marks);
+  const upcs = useAppStore((s) => s.upcs);
+  const openDetail = useAppStore((s) => s.openDetail);
 
-  useEffect(() => {
-    if (!dir || !masterFile) return;
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        const master = await loadMasterImage(dir, masterFile);
-        const canvas = ref.current;
-        if (cancelled || !canvas) return;
-
-        const context = canvas.getContext('2d');
-        if (!context) return;
-
-        // Cover, so mixed aspect ratios still line up down the column.
-        const scale = Math.max(canvas.width / master.width, canvas.height / master.height);
-        const w = master.width * scale;
-        const h = master.height * scale;
-        context.clearRect(0, 0, canvas.width, canvas.height);
-        context.drawImage(master.source, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
-      } catch {
-        // A thumbnail is never worth a broken row.
-      }
-    })();
-
-    return () => {
-      cancelled = true;
+  const inputs = useMemo(() => {
+    const base = template ?? DEFAULT_TEMPLATE;
+    return {
+      template: resolveTemplate(base, sticker, variantKey(size, type)),
+      ...resolveLabelText(sticker, size, type),
+      upc: upcFor(upcs, sticker, size, type),
     };
-  }, [dir, masterFile]);
+  }, [template, sticker, size, type, upcs]);
+
+  const { hostRef, phase } = useStickerRender({
+    dir,
+    masterFile: sticker.masterFile,
+    template: inputs.template,
+    artName: inputs.artName,
+    subtitle: inputs.subtitle,
+    marks,
+    upc: inputs.upc,
+    scale: PREVIEW_SCALE,
+    canvasClassName: CANVAS_CLASS,
+  });
 
   return (
-    <canvas
-      ref={ref}
-      width={32}
-      height={32}
-      aria-hidden
-      className="h-8 w-8 shrink-0 rounded border border-[var(--color-rule)] bg-[var(--color-paper-2)]"
-    />
+    <button
+      type="button"
+      onClick={() => openDetail({ stickerId: sticker.id, size, type, from: 'basket' })}
+      title={`${inputs.artName} — click to view full size`}
+      className={`card relative grid ${BASKET_CARD_H} w-full cursor-zoom-in place-items-center overflow-hidden p-1.5`}
+    >
+      <span ref={hostRef} className="flex h-full items-center justify-center" />
+      {phase === 'blank' && (
+        <span className="absolute inset-0 grid place-items-center text-xs text-[var(--color-ink-4)]">
+          Rendering…
+        </span>
+      )}
+    </button>
   );
 }

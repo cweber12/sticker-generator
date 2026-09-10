@@ -382,3 +382,115 @@ describe('downloadBasket', () => {
     expect(zip.buildStickerArchive).not.toHaveBeenCalled();
   });
 });
+
+describe('the maximized view', () => {
+  beforeEach(() => readyWith('Aaa.png', 'Bbb.png'));
+
+  it('opens at the variant it was given, not the one the bar is on', () => {
+    // The whole point of opening from a basket row: the bar stays where it is.
+    useAppStore.setState({ variant: { size: '16x20', type: 'DAK' } });
+    useAppStore.getState().openDetail({
+      stickerId: 'Aaa.png',
+      size: '8x10',
+      type: 'PBN',
+      from: 'basket',
+    });
+
+    expect(useAppStore.getState().detail).toEqual({
+      stickerId: 'Aaa.png',
+      size: '8x10',
+      type: 'PBN',
+      from: 'basket',
+    });
+    expect(useAppStore.getState().variant).toEqual({ size: '16x20', type: 'DAK' });
+  });
+
+  it('steps through every basket entry, not every sticker', () => {
+    useAppStore.setState({
+      basket: new Set(['Aaa.png|8x10|DAK', 'Aaa.png|8x10|PBN', 'Bbb.png|16x20|DAK']),
+    });
+    useAppStore.getState().openDetail({
+      stickerId: 'Aaa.png',
+      size: '8x10',
+      type: 'DAK',
+      from: 'basket',
+    });
+
+    useAppStore.getState().stepDetail(1);
+    expect(useAppStore.getState().detail).toMatchObject({ stickerId: 'Aaa.png', type: 'PBN' });
+
+    useAppStore.getState().stepDetail(1);
+    expect(useAppStore.getState().detail).toMatchObject({ stickerId: 'Bbb.png', size: '16x20' });
+  });
+
+  it('stops at the end rather than wrapping, so proofing an order terminates', () => {
+    useAppStore.setState({ basket: new Set(['Aaa.png|8x10|DAK', 'Bbb.png|8x10|DAK']) });
+    useAppStore.getState().openDetail({
+      stickerId: 'Bbb.png',
+      size: '8x10',
+      type: 'DAK',
+      from: 'basket',
+    });
+
+    useAppStore.getState().stepDetail(1);
+    expect(useAppStore.getState().detail).toMatchObject({ stickerId: 'Bbb.png' });
+
+    useAppStore.getState().stepDetail(-1);
+    expect(useAppStore.getState().detail).toMatchObject({ stickerId: 'Aaa.png' });
+    useAppStore.getState().stepDetail(-1);
+    expect(useAppStore.getState().detail).toMatchObject({ stickerId: 'Aaa.png' });
+  });
+
+  it('steps through the visible grid at a fixed variant when opened from a card', () => {
+    useAppStore.setState({ variant: { size: '16x20', type: 'PBN' } });
+    useAppStore.getState().openDetail({
+      stickerId: 'Aaa.png',
+      size: '16x20',
+      type: 'PBN',
+      from: 'grid',
+    });
+
+    useAppStore.getState().stepDetail(1);
+    expect(useAppStore.getState().detail).toEqual({
+      stickerId: 'Bbb.png',
+      size: '16x20',
+      type: 'PBN',
+      from: 'grid',
+    });
+  });
+
+  it('honours the search box when stepping through the grid', () => {
+    useAppStore.setState({ search: 'Bbb' });
+    useAppStore.getState().openDetail({
+      stickerId: 'Bbb.png',
+      size: '8x10',
+      type: 'DAK',
+      from: 'grid',
+    });
+    useAppStore.getState().stepDetail(-1);
+    expect(useAppStore.getState().detail).toMatchObject({ stickerId: 'Bbb.png' });
+  });
+
+  it('closes', () => {
+    useAppStore.getState().openDetail({
+      stickerId: 'Aaa.png',
+      size: '8x10',
+      type: 'DAK',
+      from: 'grid',
+    });
+    useAppStore.getState().closeDetail();
+    expect(useAppStore.getState().detail).toBeNull();
+  });
+
+  it('closes rather than pointing at nothing when its entry leaves the basket', () => {
+    useAppStore.setState({ basket: new Set(['Aaa.png|8x10|DAK']) });
+    useAppStore.getState().openDetail({
+      stickerId: 'Aaa.png',
+      size: '8x10',
+      type: 'DAK',
+      from: 'basket',
+    });
+    useAppStore.getState().removeFromBasket('Aaa.png|8x10|DAK');
+    expect(useAppStore.getState().detail).toBeNull();
+  });
+});

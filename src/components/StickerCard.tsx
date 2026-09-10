@@ -1,20 +1,22 @@
-import { useEffect, useRef, useState } from 'react';
 import type { LabelTemplate } from '@/config/template';
-import { loadMasterImage } from '@/fs/library';
-import { computeLabelGeometry, type Marks } from '@/render/slots';
-import { loadDiamondLogo, renderSticker } from '@/render/renderSticker';
+import type { Marks } from '@/render/slots';
 import type { Sticker } from '@/types';
+import { useStickerRender } from './useStickerRender';
 
 /**
  * One card in the grid: a miniature of exactly what would be exported.
  *
- * The preview goes through `renderSticker` at a small `scale` rather than
- * through any separate drawing code, so what you see here is the PDF at
- * 1/5 size and cannot drift away from it.
+ * Two targets, because the card carries two different actions. The checkbox
+ * ticks the sticker into the Selection; the image opens it full size. The card
+ * is 2:3 and a sticker is 4x6 — also 2:3 — so the preview fills the card and
+ * there is no third region to click. That is why the checkbox has to be its
+ * own control rather than "anywhere else on the card".
  */
 
 /** Roughly card-sized at 300 dpi, so the browser scales down rather than up. */
 const PREVIEW_SCALE = 0.2;
+
+const CANVAS_CLASS = 'block h-full w-auto max-w-full rounded';
 
 export interface StickerCardProps {
   sticker: Sticker;
@@ -28,105 +30,78 @@ export interface StickerCardProps {
   /** How many variants of this sticker are in the basket. 0 hides the chip. */
   basketCount: number;
   onSelect: (id: string, shift: boolean) => void;
+  onOpen: (id: string) => void;
 }
 
-/**
- * 'blank' only until the first canvas lands. A re-render on a filter change
- * keeps the previous one on screen instead of flashing every card back to a
- * placeholder, so toggling a filter reads as an update rather than a reload.
- */
-type Phase = 'blank' | 'ready' | 'failed';
-
 export default function StickerCard(props: StickerCardProps) {
-  const { sticker, dir, template, artName, subtitle, marks, upc, selected, basketCount, onSelect } =
-    props;
+  const {
+    sticker,
+    dir,
+    template,
+    artName,
+    subtitle,
+    marks,
+    upc,
+    selected,
+    basketCount,
+    onSelect,
+    onOpen,
+  } = props;
 
-  const hostRef = useRef<HTMLDivElement>(null);
-  const [phase, setPhase] = useState<Phase>('blank');
-  const [overflow, setOverflow] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        const master = await loadMasterImage(dir, sticker.masterFile);
-        const logo = marks.logo ? await loadDiamondLogo() : null;
-        if (cancelled) return;
-
-        const canvas = await renderSticker({
-          image: master.source,
-          imageW: master.width,
-          imageH: master.height,
-          artName,
-          subtitle,
-          upc,
-          marks,
-          template,
-          logo,
-          scale: PREVIEW_SCALE,
-        });
-        if (cancelled || !hostRef.current) return;
-
-        // Asking slots.ts rather than measuring the canvas: the mark layout has
-        // exactly one implementation and this is not a second one.
-        const aspect = logo && logo.height > 0 ? logo.width / logo.height : 1;
-        setOverflow(computeLabelGeometry(template, marks, aspect).overflow);
-
-        canvas.className = 'block h-full w-auto max-w-full rounded';
-        hostRef.current.replaceChildren(canvas);
-        setPhase('ready');
-      } catch {
-        if (!cancelled) setPhase('failed');
-      }
-    })();
-
-    // Filters change faster than renders finish. Without this, a late render
-    // from a previous filter can land on top of the current one.
-    return () => {
-      cancelled = true;
-    };
-  }, [dir, sticker.masterFile, template, artName, subtitle, marks, upc]);
+  const { hostRef, phase, overflow } = useStickerRender({
+    dir,
+    masterFile: sticker.masterFile,
+    template,
+    artName,
+    subtitle,
+    marks,
+    upc,
+    scale: PREVIEW_SCALE,
+    canvasClassName: CANVAS_CLASS,
+  });
 
   return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      onClick={(event) => onSelect(sticker.id, event.shiftKey)}
-      title={artName}
-      className={`card group relative flex h-full w-full items-center justify-center overflow-hidden p-2 text-left ${
-        selected
-          ? 'ring-2 ring-[var(--color-accent)] ring-inset'
-          : 'hover:border-[var(--color-ink-4)]'
+    <div
+      className={`card group relative h-full w-full overflow-hidden ${
+        selected ? 'ring-2 ring-[var(--color-accent)] ring-inset' : 'hover:border-[var(--color-ink-4)]'
       }`}
     >
-      <div ref={hostRef} className="flex h-full items-center justify-center" />
+      <button
+        type="button"
+        onClick={() => onOpen(sticker.id)}
+        title={`${artName} — click to view full size`}
+        className="flex h-full w-full cursor-zoom-in items-center justify-center p-2"
+      >
+        <span ref={hostRef} className="flex h-full items-center justify-center" />
+      </button>
 
       {phase === 'blank' && (
-        <span className="absolute inset-0 grid place-items-center text-xs text-[var(--color-ink-4)]">
+        <span className="pointer-events-none absolute inset-0 grid place-items-center text-xs text-[var(--color-ink-4)]">
           Rendering…
         </span>
       )}
 
-      <span className="absolute top-8 left-1.5 flex flex-col items-start gap-1">
+      {/* Generous hit area around a small box, so ticking is easy without the
+          control covering the art it sits on. */}
+      <label
+        title={selected ? 'Ticked — shift-click to fill a range' : 'Tick this sticker'}
+        className="absolute top-0 left-0 grid h-8 w-8 cursor-pointer place-items-center"
+      >
+        <input
+          type="checkbox"
+          checked={selected}
+          onClick={(event) => onSelect(sticker.id, event.shiftKey)}
+          onChange={() => undefined}
+          aria-label={`Select ${artName || sticker.masterFile}`}
+          className="h-[18px] w-[18px] accent-[var(--color-accent)]"
+        />
+      </label>
+
+      <span className="pointer-events-none absolute top-8 left-1.5 flex flex-col items-start gap-1">
         {phase === 'failed' && <Badge tone="bad">Render failed</Badge>}
         {/* A missing UPC is a fact about the lookup, not about this render. */}
         {phase !== 'failed' && marks.barcode && !upc && <Badge tone="warn">No UPC</Badge>}
         {phase === 'ready' && overflow && <Badge tone="warn">Label overflows</Badge>}
-      </span>
-
-      {/* A visual checkbox, not an <input> — a real one nested in a button is
-          invalid HTML. Slice B splits the targets, when clicking the image has
-          a detail view to open. */}
-      <span
-        aria-hidden
-        className={`absolute top-1.5 left-1.5 grid h-[18px] w-[18px] place-items-center rounded border text-[11px] leading-none font-bold ${
-          selected
-            ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-white'
-            : 'border-[var(--color-ink-4)] bg-white/90 text-transparent'
-        }`}
-      >
-        ✓
       </span>
 
       {/* Answers "have I dealt with this one?" while scanning the grid. Which
@@ -134,7 +109,7 @@ export default function StickerCard(props: StickerCardProps) {
       {basketCount > 0 && (
         <span
           title={`In the basket at ${basketCount} variant${basketCount === 1 ? '' : 's'}`}
-          className="absolute top-1.5 right-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-[var(--color-ink-2)] px-1 text-[11px] leading-none font-bold text-white"
+          className="pointer-events-none absolute top-1.5 right-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-[var(--color-ink-2)] px-1 text-[11px] leading-none font-bold text-white"
         >
           {basketCount}
         </span>
@@ -142,10 +117,10 @@ export default function StickerCard(props: StickerCardProps) {
 
       {/* On hover only: at rest this sits exactly over the sticker's own label
           strip, which is the part of the preview worth looking at. */}
-      <span className="absolute right-0 bottom-0 left-0 truncate bg-white/90 px-2 py-1 text-[11px] text-[var(--color-ink-2)] opacity-0 transition-opacity group-hover:opacity-100">
+      <span className="pointer-events-none absolute right-0 bottom-0 left-0 truncate bg-white/90 px-2 py-1 text-[11px] text-[var(--color-ink-2)] opacity-0 transition-opacity group-hover:opacity-100">
         {artName || sticker.masterFile}
       </span>
-    </button>
+    </div>
   );
 }
 

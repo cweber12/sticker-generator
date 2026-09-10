@@ -38,6 +38,7 @@ export default function StickerGrid({ visible, visibleIds, empty }: StickerGridP
   const selected = useAppStore((s) => s.selected);
   const upcs = useAppStore((s) => s.upcs);
   const clickSticker = useAppStore((s) => s.clickSticker);
+  const openDetail = useAppStore((s) => s.openDetail);
 
   // Renders are the expensive part, so they follow the settled filter rather
   // than every intermediate one. The buttons themselves stay instant.
@@ -126,6 +127,9 @@ export default function StickerGrid({ visible, visibleIds, empty }: StickerGridP
             selected={selected.has(sticker.id)}
             basketCount={basketCounts.get(sticker.id) ?? 0}
             onSelect={(id, shift) => clickSticker(id, visibleIds, shift)}
+            onOpen={(id) =>
+              openDetail({ stickerId: id, size: settled.size, type: settled.type, from: 'grid' })
+            }
           />
         );
       })}

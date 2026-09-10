@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import FolderGate from '@/components/FolderGate';
 import RequestBar from '@/components/RequestBar';
 import BasketPanel from '@/components/BasketPanel';
+import StickerDetail from '@/components/StickerDetail';
 import StickerGrid from '@/components/StickerGrid';
 import { ensureFontsLoaded, type FontStatus } from '@/render/fonts';
 import { matchesSearch, presentStickers, useAppStore } from '@/store/useAppStore';
@@ -82,6 +83,8 @@ function LibraryScreen() {
         <StickerGrid visible={visible} visibleIds={visibleIds} empty={files.length === 0} />
         <BasketPanel />
       </div>
+
+      <StickerDetail />
     </div>
   );
 }
