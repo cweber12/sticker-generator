@@ -71,14 +71,33 @@ export interface Library {
   stickers: Sticker[];
 }
 
-/** Resolves template -> sticker overrides -> variant overrides, in that order. */
+/**
+ * Resolves template -> sticker overrides -> variant overrides, in that order.
+ *
+ * Returns the template ITSELF, not a copy, when neither patch has anything in
+ * it. That is not a micro-optimisation: a resolved template is a card render
+ * effect's dependency, and every sticker is re-resolved whenever the library
+ * changes. Handing an un-overridden sticker a fresh object each time makes
+ * editing ONE sticker re-render every canvas in the grid — which a live colour
+ * picker would do on every mouse move.
+ */
 export function resolveTemplate(
   template: LabelTemplate,
   sticker: Pick<Sticker, 'overrides' | 'variantOverrides'>,
   key?: VariantKey,
 ): LabelTemplate {
   const variant = key ? sticker.variantOverrides[key] : undefined;
-  return { ...template, ...geometryOnly(sticker.overrides), ...geometryOnly(variant) };
+  const own = geometryOnly(sticker.overrides);
+  const forVariant = geometryOnly(variant);
+
+  // An empty patch is not a change.
+  if (isEmpty(own) && isEmpty(forVariant)) return template;
+  return { ...template, ...own, ...forVariant };
+}
+
+function isEmpty(patch: Partial<LabelTemplate>): boolean {
+  for (const _key in patch) return false;
+  return true;
 }
 
 /**
