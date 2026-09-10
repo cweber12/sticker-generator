@@ -147,7 +147,9 @@ search box when it gets long. One card per image, showing the current filter.
 rows fill the screen including margins; column count falls out of the aspect
 ratio. Implemented in `.sticker-grid` in `index.css`.
 
-**Editor.** Click a card → panel beside a live preview. Art name and subtitle as
+**Editor.** Click a card's image → a maximized detail view; the editor is a
+toggle inside it, beside the live preview. The two are one surface because
+finding a problem in a proof and fixing it are the same moment. Art name and subtitle as
 text fields, mark toggles, and label geometry in inches/points with steppers —
 never raw pixels. Overrides are **sparse**: an untouched field is absent and
 inherits the template, so reverting is `delete overrides[key]`, which is exact
@@ -206,8 +208,12 @@ src/
   that already exists on both machines.
 - No conflict resolution. Two people, last write wins, sync history recovers it.
 - No `library/<Type>/<Size>/` mirror tree. Filters replace folder browsing.
-- No duplicate-detection dialog, per-card filter pinning, progress dialog, or
-  code splitting.
+- No duplicate-detection dialog, progress dialog, or code splitting.
+- ~~No per-card filter pinning.~~ Amended by
+  `docs/adr/0004-the-basket-of-requests.md`: a download is a **basket** of
+  `Sticker × Variant`, not N stickers × one variant. Pinning itself is still
+  rejected — a card holds one pin, which cannot express the same artwork at
+  two variants.
 - No selectable-text PDF path. Rasterized only, which is what prints correctly.
 - No spreadsheet import, column mapper, fuzzy image matching, or manual row
   entry — all of v1's machinery for reconciling two inputs.
