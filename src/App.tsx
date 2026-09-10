@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import FolderGate from '@/components/FolderGate';
 import RequestBar from '@/components/RequestBar';
+import BasketPanel from '@/components/BasketPanel';
 import StickerGrid from '@/components/StickerGrid';
 import { ensureFontsLoaded, type FontStatus } from '@/render/fonts';
 import { matchesSearch, presentStickers, useAppStore } from '@/store/useAppStore';
@@ -77,7 +78,10 @@ function LibraryScreen() {
         </div>
       )}
 
-      <StickerGrid visible={visible} visibleIds={visibleIds} empty={files.length === 0} />
+      <div className="flex min-h-0 flex-1">
+        <StickerGrid visible={visible} visibleIds={visibleIds} empty={files.length === 0} />
+        <BasketPanel />
+      </div>
     </div>
   );
 }
