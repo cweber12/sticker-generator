@@ -1,6 +1,10 @@
 # Slice C — Contained artwork and the frame: design
 
-**Status:** design settled, not yet planned task-by-task.
+**Status:** shipped. `2876b11` render · `fc35158` controls.
+
+Written during the grilling that settled it, then corrected where the build
+disagreed with the design. `docs/adr/0005-contained-artwork-and-the-frame.md`
+is the decision record; this is the working notes behind it.
 
 **Goal:** Let a sticker whose master already carries its own title text be
 rendered *whole* — nothing cropped, nothing overlaid — sitting on a background
@@ -114,6 +118,11 @@ This is the first override write path in the app.
   take `imageW`/`imageH`, return `image: {sx,sy,sw,sh,dx,dy,dw,dh}`. Cover
   yields a cropped src onto the full canvas; contain a full src onto an inset
   dst. `drawCover`'s math moves here and becomes tested for the first time.
+
+  **Corrected from the design above:** the geometry does NOT return the
+  background colour. It cannot — it is pure, and the colour needs pixels.
+  `renderSticker` resolves it instead, through the same `resolveBackground`
+  the detail view calls for its swatch, so the two cannot disagree.
 - `src/render/renderSticker.ts` — delete `drawCover` and the fit branch. The
   renderer becomes `fillRect(background)` → one `drawImage(...geom.image)` →
   strip → marks → text.
