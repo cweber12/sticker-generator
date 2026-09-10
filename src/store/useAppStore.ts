@@ -1,5 +1,7 @@
 import { create } from 'zustand';
-import type { Filters, Library, Sticker, StickerRequest } from '@/types';
+import type { Library, Sticker, Variant } from '@/types';
+import type { Marks } from '@/render/slots';
+import { addVariant, basketRequests, type RequestKey } from '@/lib/basket';
 import { SIZES, TYPES } from '@/config/variants';
 import { buildStickerArchive, saveBlob } from '@/lib/zip';
 import {
@@ -53,10 +55,21 @@ interface AppState {
   /** Non-fatal things worth telling the user about, newest batch only. */
   notices: string[];
 
-  filters: Filters;
+  /** The Variant everything is drawn as, and that Add will use. Not a filter. */
+  variant: Variant;
+  /**
+   * Marks for the DOWNLOAD, not for a request. The filename encodes size and
+   * type only, so two entries differing by marks would be indistinguishable
+   * in the ZIP — see docs/adr/0004-the-basket-of-requests.md.
+   */
+  marks: Marks;
+  /** Sticker x Variant entries the download will render. */
+  basket: ReadonlySet<RequestKey>;
+  /** Whether the basket panel is open beside the grid. */
+  basketOpen: boolean;
   /** Free text matched against art names. */
   search: string;
-  /** Sticker ids picked for download. Survives filter changes by design. */
+  /** Stickers ticked in the grid. Staging: what the next Add will use. */
   selected: ReadonlySet<string>;
   /** Where the last plain click landed, so shift-click has a range to fill. */
   anchorId: string | null;
@@ -81,10 +94,16 @@ interface AppState {
   importFiles: (files: readonly File[]) => Promise<void>;
   /** Re-reads the folder, picking up whatever the other machine synced in. */
   rescan: () => Promise<void>;
-  /** Renders the selection as the current request and saves one ZIP. */
-  downloadSelected: () => Promise<void>;
+  /** Renders the basket and saves one ZIP. */
+  downloadBasket: () => Promise<void>;
 
-  setFilters: (patch: Partial<Filters>) => void;
+  setVariant: (patch: Partial<Variant>) => void;
+  setMarks: (patch: Partial<Marks>) => void;
+  /** Selection x the current Variant, unioned in. Does NOT clear the ticks. */
+  addToBasket: () => void;
+  removeFromBasket: (key: RequestKey) => void;
+  emptyBasket: () => void;
+  toggleBasket: () => void;
   setSearch: (search: string) => void;
 
   /** Plain click toggles one card; shift-click fills the range from the anchor. */
@@ -124,12 +143,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   busy: false,
   notices: [],
 
-  filters: {
-    size: SIZES[0].id,
-    type: TYPES[0].id,
-    barcode: true,
-    logo: false,
-  },
+  variant: { size: SIZES[0].id, type: TYPES[0].id },
+  // Product type supplies only a DEFAULT, and it seeds the bar, not a sticker.
+  marks: { ...TYPES[0].defaultMarks },
+  basket: new Set<RequestKey>(),
+  basketOpen: false,
   search: '',
   selected: new Set<string>(),
   anchorId: null,
@@ -209,6 +227,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       selected: new Set<string>(),
       anchorId: null,
       search: '',
+      basket: new Set<RequestKey>(),
+      basketOpen: false,
     });
   },
 
@@ -264,22 +284,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  downloadSelected: async () => {
-    const { dir, library, selected, filters, upcs } = get();
-    if (!dir || !library || selected.size === 0) return;
+  downloadBasket: async () => {
+    const { dir, library, files, basket, marks, upcs } = get();
+    if (!dir || !library || basket.size === 0) return;
 
     set({ busy: true, notices: [] });
     try {
-      // Library order, not selection order, so the archive comes out in the
-      // same order as the grid you picked from.
-      const chosen = library.stickers.filter((sticker) => selected.has(sticker.id));
-      const requests: StickerRequest[] = chosen.map((sticker) => ({
-        stickerId: sticker.id,
-        size: filters.size,
-        type: filters.type,
-        barcode: filters.barcode,
-        logo: filters.logo,
-      }));
+      // Library order, not the order things were added, so the archive comes
+      // out in the same order as the grid you picked from.
+      const requests = basketRequests(basket, presentStickers(library, files), marks);
 
       const archive = await buildStickerArchive(requests, {
         dir,
@@ -290,17 +303,45 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       if (archive.blob) saveBlob(archive.blob, archive.filename);
 
+      // Once downloaded they live in the ZIP and nowhere else. A failure never
+      // downloaded, so it stays put and one more press retries it.
+      const next = new Set(basket);
+      for (const key of archive.succeeded) next.delete(key);
+
       const notices = archive.failures.map((f) => `${f.label} could not be rendered: ${f.message}`);
       if (!archive.blob) {
         notices.unshift('Nothing could be rendered, so no archive was downloaded.');
       }
-      set({ busy: false, notices });
+      set({ basket: next, busy: false, notices });
     } catch (error) {
       set({ busy: false, notices: [messageOf(error)] });
     }
   },
 
-  setFilters: (patch) => set((s) => ({ filters: { ...s.filters, ...patch } })),
+  setVariant: (patch) => set((s) => ({ variant: { ...s.variant, ...patch } })),
+  setMarks: (patch) => set((s) => ({ marks: { ...s.marks, ...patch } })),
+
+  /**
+   * Selection x the current Variant, unioned into the basket.
+   *
+   * Does NOT clear the selection. That is what makes adding the same stickers
+   * at a second variant one more press instead of a fresh round of ticking.
+   */
+  addToBasket: () => {
+    const { selected, variant, basket } = get();
+    if (selected.size === 0) return;
+    set({ basket: addVariant(basket, selected, variant.size, variant.type) });
+  },
+
+  removeFromBasket: (key) =>
+    set((s) => {
+      const next = new Set(s.basket);
+      next.delete(key);
+      return { basket: next };
+    }),
+
+  emptyBasket: () => set({ basket: new Set<RequestKey>() }),
+  toggleBasket: () => set((s) => ({ basketOpen: !s.basketOpen })),
   setSearch: (search) => set({ search }),
 
   clickSticker: (id, visibleIds, shift) => {
@@ -383,6 +424,7 @@ async function open(
       error: null,
       selected: new Set<string>(),
       anchorId: null,
+      basket: new Set<RequestKey>(),
     });
   } catch (error) {
     // A folder we cannot read is not a folder we should pretend to be in.

@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useAppStore } from './useAppStore';
-import { emptyLibrary } from '@/fs/library';
+import { emptyLibrary, stickerFor } from '@/fs/library';
 import * as folder from '@/fs/folder';
 import * as library from '@/fs/library';
+import * as zip from '@/lib/zip';
 
 /**
  * The connection state machine.
@@ -40,6 +41,21 @@ vi.mock('@/fs/library', async (importOriginal) => {
   };
 });
 
+vi.mock('@/lib/zip', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/zip')>();
+  return {
+    ...actual,
+    buildStickerArchive: vi.fn(async () => ({
+      blob: new Blob(['zip']),
+      filename: 'stickers_2026-09-09.zip',
+      count: 0,
+      succeeded: [] as string[],
+      failures: [] as { label: string; message: string }[],
+    })),
+    saveBlob: vi.fn(),
+  };
+});
+
 const handle = { kind: 'directory', name: 'Client Stickers' } as FileSystemDirectoryHandle;
 
 const pristine = { ...useAppStore.getState() };
@@ -58,6 +74,8 @@ beforeEach(() => {
     selected: new Set<string>(),
     anchorId: null,
     search: '',
+    basket: new Set<string>(),
+    basketOpen: false,
   });
   vi.mocked(folder.isFolderPickerSupported).mockReturnValue(true);
   vi.mocked(folder.loadFolderHandle).mockResolvedValue(null);
@@ -248,5 +266,119 @@ describe('selection', () => {
     expect(useAppStore.getState().selected.size).toBe(4);
     clearSelection();
     expect(useAppStore.getState().selected.size).toBe(0);
+  });
+});
+
+/** A ready store holding stickers, as the folder would present them. */
+function readyWith(...files: string[]) {
+  useAppStore.setState({
+    status: 'ready',
+    dir: handle,
+    library: { ...emptyLibrary(), stickers: files.map((file) => stickerFor(file)) },
+    files,
+  });
+}
+
+describe('addToBasket', () => {
+  beforeEach(() => readyWith('Aaa.png', 'Bbb.png'));
+
+  it('adds the selection at the current variant', () => {
+    useAppStore.setState({
+      selected: new Set(['Aaa.png']),
+      variant: { size: '16x20', type: 'DAK' },
+    });
+    useAppStore.getState().addToBasket();
+    expect([...useAppStore.getState().basket]).toEqual(['Aaa.png|16x20|DAK']);
+  });
+
+  it('leaves the selection ticked, so a second variant is one more click', () => {
+    // Deliberately unlike a shopping cart: this is what makes "the same five
+    // stickers, also at 8x10 PBN" one press rather than five.
+    useAppStore.setState({
+      selected: new Set(['Aaa.png']),
+      variant: { size: '16x20', type: 'DAK' },
+    });
+    useAppStore.getState().addToBasket();
+    expect([...useAppStore.getState().selected]).toEqual(['Aaa.png']);
+
+    useAppStore.getState().setVariant({ size: '8x10', type: 'PBN' });
+    useAppStore.getState().addToBasket();
+    expect([...useAppStore.getState().basket].sort()).toEqual([
+      'Aaa.png|16x20|DAK',
+      'Aaa.png|8x10|PBN',
+    ]);
+  });
+
+  it('adding twice at one variant changes nothing', () => {
+    useAppStore.setState({ selected: new Set(['Aaa.png', 'Bbb.png']) });
+    useAppStore.getState().addToBasket();
+    useAppStore.getState().addToBasket();
+    expect(useAppStore.getState().basket.size).toBe(2);
+  });
+
+  it('does nothing at all when nothing is ticked', () => {
+    useAppStore.setState({ selected: new Set<string>() });
+    useAppStore.getState().addToBasket();
+    expect(useAppStore.getState().basket.size).toBe(0);
+  });
+});
+
+describe('removeFromBasket / emptyBasket', () => {
+  beforeEach(() => readyWith('Aaa.png', 'Bbb.png'));
+
+  it('removes exactly one entry', () => {
+    useAppStore.setState({ basket: new Set(['Aaa.png|16x20|DAK', 'Aaa.png|8x10|PBN']) });
+    useAppStore.getState().removeFromBasket('Aaa.png|16x20|DAK');
+    expect([...useAppStore.getState().basket]).toEqual(['Aaa.png|8x10|PBN']);
+  });
+
+  it('empties everything', () => {
+    useAppStore.setState({ basket: new Set(['Aaa.png|16x20|DAK']) });
+    useAppStore.getState().emptyBasket();
+    expect(useAppStore.getState().basket.size).toBe(0);
+  });
+});
+
+describe('downloadBasket', () => {
+  beforeEach(() => readyWith('Aaa.png', 'Bbb.png'));
+
+  it('renders the basket, not the selection', async () => {
+    useAppStore.setState({
+      selected: new Set(['Bbb.png']),
+      basket: new Set(['Aaa.png|16x20|DAK']),
+      marks: { barcode: false, logo: true },
+    });
+
+    await useAppStore.getState().downloadBasket();
+
+    const [requests] = vi.mocked(zip.buildStickerArchive).mock.calls[0];
+    expect(requests).toEqual([
+      { stickerId: 'Aaa.png', size: '16x20', type: 'DAK', barcode: false, logo: true },
+    ]);
+  });
+
+  it('empties the entries that downloaded and keeps the ones that did not', async () => {
+    vi.mocked(zip.buildStickerArchive).mockResolvedValue({
+      blob: new Blob(['zip']),
+      filename: 'stickers.zip',
+      count: 1,
+      succeeded: ['Aaa.png|16x20|DAK'],
+      failures: [{ label: 'Bbb (16x20 DAK)', message: 'gone' }],
+    });
+
+    useAppStore.setState({ basket: new Set(['Aaa.png|16x20|DAK', 'Bbb.png|16x20|DAK']) });
+
+    await useAppStore.getState().downloadBasket();
+
+    // Once downloaded they live in the ZIP and nowhere else; a failure never
+    // downloaded, so it stays and one more press retries it.
+    expect([...useAppStore.getState().basket]).toEqual(['Bbb.png|16x20|DAK']);
+    expect(useAppStore.getState().notices.join(' ')).toMatch(/gone/);
+  });
+
+  it('does nothing when the basket is empty', async () => {
+    useAppStore.setState({ basket: new Set<string>() });
+    await useAppStore.getState().downloadBasket();
+    expect(zip.buildStickerArchive).not.toHaveBeenCalled();
   });
 });

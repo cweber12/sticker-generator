@@ -63,17 +63,6 @@ export interface Variant {
   type: TypeId;
 }
 
-/**
- * What the user is currently asking to see. Filters describe a REQUEST, never
- * a sticker: changing one must not mutate anything persistent.
- */
-export interface Filters {
-  size: SizeId;
-  type: TypeId;
-  barcode: boolean;
-  logo: boolean;
-}
-
 /** The whole index, as stored in stickers.json at the library folder root. */
 export interface Library {
   version: 1;
