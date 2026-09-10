@@ -1,11 +1,12 @@
 import type { LabelTemplate } from '@/config/template';
 import type { Marks } from './slots';
 import {
-  computeLabelGeometry,
+  computeStickerGeometry,
   nameBaselineY,
   subtitleBaselineY,
   templateFontPx,
 } from './slots';
+import { resolveBackground } from './background';
 import { renderBarcode } from './barcode';
 import { NAME_STACK, SUBTITLE_STACK, ensureFontsLoaded } from './fonts';
 
@@ -17,6 +18,11 @@ import { NAME_STACK, SUBTITLE_STACK, ensureFontsLoaded } from './fonts';
  * coordinates. A preview is therefore a true miniature of the PDF, and there
  * is no second geometry implementation to drift out of sync (which is exactly
  * where v1's dual raster/vector export paths went wrong).
+ *
+ * It also serves both fits without knowing which one it is on. `slots.ts`
+ * hands back a source rect and a destination rect; cover yields a cropped
+ * source onto the whole canvas, contain a whole source onto an inset one. The
+ * only `if` about fit in the entire render path is inside that pure function.
  */
 
 /** Below this the fit-shrink gives up. */
@@ -68,7 +74,7 @@ export async function renderSticker(input: RenderStickerInput): Promise<HTMLCanv
   } = input;
 
   const logoAspect = logo && logo.height > 0 ? logo.width / logo.height : 1;
-  const geom = computeLabelGeometry(template, marks, logoAspect);
+  const geom = computeStickerGeometry(template, marks, logoAspect, imageW, imageH);
 
   if (geom.overflow) {
     onWarning?.('The enabled marks leave almost no room for the label text.');
@@ -94,13 +100,21 @@ export async function renderSticker(input: RenderStickerInput): Promise<HTMLCanv
   ctx.scale(scale, scale);
 
   // ── Background ───────────────────────────────────────────────────────────
-  ctx.fillStyle = '#ffffff';
+  // Painted under both fits. Under cover the artwork then hides it entirely,
+  // except where a master carries transparency — which is the one case where
+  // a white sticker was never what you wanted either.
+  ctx.fillStyle = resolveBackground(template.background, image);
   ctx.fillRect(0, 0, geom.stickerW, geom.stickerH);
 
-  // ── Artwork, full bleed, centre cover-crop ───────────────────────────────
-  drawCover(ctx, image, imageW, imageH, geom.stickerW, geom.stickerH);
+  // ── Artwork ──────────────────────────────────────────────────────────────
+  const { sx, sy, sw, sh, dx, dy, dw, dh } = geom.image;
+  if (dw > 0 && dh > 0) {
+    ctx.drawImage(image, sx, sy, sw, sh, dx, dy, dw, dh);
+  }
 
   // ── Label strip ──────────────────────────────────────────────────────────
+  // White under both fits, deliberately: bwip-js composites the barcode with a
+  // transparent background, so this strip IS its quiet zone.
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(geom.labelX, geom.labelY, geom.labelW, geom.labelH);
 
@@ -140,30 +154,6 @@ export async function renderSticker(input: RenderStickerInput): Promise<HTMLCanv
 
   ctx.restore();
   return canvas;
-}
-
-/** Centre cover-crop, preserving aspect ratio. */
-function drawCover(
-  ctx: CanvasRenderingContext2D,
-  image: CanvasImageSource,
-  srcW: number,
-  srcH: number,
-  dstW: number,
-  dstH: number,
-): void {
-  if (srcW <= 0 || srcH <= 0) return;
-  const srcRatio = srcW / srcH;
-  const dstRatio = dstW / dstH;
-
-  let sx = 0, sy = 0, sw = srcW, sh = srcH;
-  if (srcRatio > dstRatio) {
-    sw = srcH * dstRatio;
-    sx = (srcW - sw) / 2;
-  } else {
-    sh = srcW / dstRatio;
-    sy = (srcH - sh) / 2;
-  }
-  ctx.drawImage(image, sx, sy, sw, sh, 0, 0, dstW, dstH);
 }
 
 /** Steps the font size down until the text fits, with a hard floor. */

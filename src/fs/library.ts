@@ -285,16 +285,28 @@ function normalizeLibrary(raw: unknown): Library {
 }
 
 /**
- * Every known template key is guaranteed to be a finite number, because the
- * render path does arithmetic on these. Unknown keys ride along untouched.
+ * Every known template key is guaranteed to hold a value of the right kind,
+ * because the render path does arithmetic on the numbers and hands the strings
+ * straight to the canvas. Validation follows the DEFAULT_TEMPLATE entry's own
+ * type rather than assuming number: `fit` and `background` are strings, and
+ * coercing them to a default on every read would quietly discard them.
+ *
+ * An unrecognised `fit` simply is not 'contain', so it renders as cover. An
+ * unrecognised `background` is rejected downstream by isHexColor and samples
+ * instead. Both fail soft on purpose. Unknown keys ride along untouched.
  */
 function mergeTemplate(raw: unknown): LabelTemplate {
   const source = isRecord(raw) ? raw : {};
   const out: Record<string, unknown> = { ...source };
 
   for (const key of Object.keys(DEFAULT_TEMPLATE) as (keyof LabelTemplate)[]) {
+    const fallback = DEFAULT_TEMPLATE[key];
     const value = source[key];
-    out[key] = typeof value === 'number' && Number.isFinite(value) ? value : DEFAULT_TEMPLATE[key];
+    const usable =
+      typeof fallback === 'number'
+        ? typeof value === 'number' && Number.isFinite(value)
+        : typeof value === 'string' && value !== '';
+    out[key] = usable ? value : fallback;
   }
 
   return out as unknown as LabelTemplate;
