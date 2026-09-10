@@ -275,6 +275,15 @@ If you ever deploy this publicly on GH Pages, self-hosting those faces means
 serving them to anyone, which most desktop font licenses forbid. Keep it local
 and the question doesn't arise.
 
+**Settled: it stays local.** The Pages deploy workflow is gone. It could only
+have shipped a build with no label fonts — `.gitignore` excludes them for that
+licence reason — so the hosted copy would have rendered substitute typefaces
+and, on the two machines that *do* have the faces installed, would have looked
+correct via the CSS fallback while looking wrong everywhere else. That is
+exactly the v1 failure this section exists to prevent. Nobody needed the hosted
+copy either: the app cannot work without `showDirectoryPicker` and a local
+synced folder, which `npm run dev` already provides.
+
 ## 10. Tests worth keeping
 
 `slots.ts` (all four mark combinations, degenerate templates), `parseFilename`,
