@@ -7,7 +7,7 @@ code all use the same terms.
 
 **Sticker**:
 One uploaded artwork, plus the label metadata attached to it. Persistent; one
-record per artwork in `catalog.json`. A sticker has no size and no product type.
+record per artwork in `stickers.json`. A sticker has no size and no product type.
 _Avoid_: row, item, product
 
 **Sticker Request**:
@@ -43,7 +43,7 @@ exclusive setting scoped to Diamond Art; v2 does not)
 
 **Template**:
 The global label geometry — insets, heights, padding, font sizes. Stored in
-inches and points. One template per catalog.
+inches and points. One template per **Library folder**, held in `stickers.json`.
 _Avoid_: layout config, design units
 
 **Override**:

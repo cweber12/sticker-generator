@@ -149,14 +149,39 @@ search box when it gets long. One card per image, showing the current filter.
 rows fill the screen including margins; column count falls out of the aspect
 ratio. Implemented in `.sticker-grid` in `index.css`.
 
-**Editor.** Click a card's image → a maximized detail view; the editor is a
-toggle inside it, beside the live preview. The two are one surface because
-finding a problem in a proof and fixing it are the same moment. Art name and subtitle as
-text fields, mark toggles, and label geometry in inches/points with steppers —
-never raw pixels. Overrides are **sparse**: an untouched field is absent and
-inherits the template, so reverting is `delete overrides[key]`, which is exact
-rather than "restore a remembered value". A revert arrow appears only on fields
-that diverge.
+**A card has two targets.** Clicking the **image** maximizes that sticker;
+clicking the **checkbox** ticks it. There is no third region, which is why the
+checkbox is its own control rather than the whole card being clickable.
+
+**Maximized view.** ✅ Built — `components/StickerDetail.tsx`. It fills the
+screen with one sticker drawn at **one specific variant**, carried in from
+wherever it was opened rather than read from the request bar: a basket row
+opens at the variant that row is for, and the grid must not follow it there.
+← → walk whichever list it came from — the basket entries, or the visible grid
+— so proofing an order is one open and a run of arrow presses. Esc or a click
+on the surround closes it.
+
+```
+┌────────────────────────────────────────────────────────────┐
+│  Sunset Beach                                     Close ✕  │
+│  16x20 Diamond Art                                         │
+│                    ┌────────────────┐                      │
+│        ‹           │   full-size    │           ›          │
+│                    │     proof      │                      │
+│                    └────────────────┘                      │
+│           Walking the basket · ← → to move · Esc to close  │
+└────────────────────────────────────────────────────────────┘
+```
+
+It is **read-only**. It proves a variant; it does not yet change one.
+
+**Editor.** ⬜ Not built. It lands as a toggle inside the maximized view,
+beside the live preview, because finding a problem in a proof and fixing it are
+the same moment. Art name and subtitle as text fields, mark toggles, and label
+geometry in inches/points with steppers — never raw pixels. Overrides are
+**sparse**: an untouched field is absent and inherits the template, so
+reverting is `delete overrides[key]`, which is exact rather than "restore a
+remembered value". A revert arrow appears only on fields that diverge.
 
 ---
 
@@ -183,10 +208,22 @@ src/
 │   ├── normalize.ts      ✅ slug + lookup key (tested)
 │   ├── basket.ts         ✅ sticker × variant keys, ordering (tested)
 │   └── zip.ts            ✅ build the download archive
-├── store/useAppStore.ts  ✅ stickers, variant, marks, selection, basket
-└── components/           ✅ FolderGate, RequestBar, StickerGrid, BasketPanel
-                          ⬜ EditorPanel
+├── store/useAppStore.ts  ✅ stickers, variant, marks, selection, basket, detail
+└── components/
+    ├── FolderGate.tsx      ✅ pick the folder, re-request permission
+    ├── RequestBar.tsx      ✅ variant, marks, selection count, Add, Basket
+    ├── StickerGrid.tsx     ✅ every sticker, drawn at the current variant
+    ├── StickerCard.tsx     ✅ one card — image opens, checkbox ticks
+    ├── StickerDetail.tsx   ✅ one sticker full size at one specific variant
+    ├── BasketPanel.tsx     ✅ the order beside the grid, and the download
+    ├── useStickerRender.ts ✅ the shared render effect — card, basket, detail
+    └── EditorPanel.tsx     ⬜ label editing, as a toggle inside StickerDetail
 ```
+
+`useStickerRender.ts` is a hook, not a component, but it lives beside its three
+consumers rather than in `lib/` because it is a React effect over
+`renderSticker` — the one render path — and nothing outside `components/` calls
+it.
 
 ✅ = phase 1, done and passing CI.
 
