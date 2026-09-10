@@ -19,6 +19,12 @@ storing any of them.
   library folder.
 - `StickerRequest` — ephemeral `{ stickerId, size, type, barcode, logo }`.
   A download is `StickerRequest[] → ZIP`. That is the whole application.
+- The requests come from the **basket**: a set of `Sticker × Variant` keyed
+  `file|size|type`. Selection is two things — `selected` stages the ticks in
+  the grid, `basket` holds the order — and **Add** unions one into the other
+  without clearing the ticks. Marks are a property of the *download*, not of a
+  request, because the filename encodes size and type only. See
+  `docs/adr/0004-the-basket-of-requests.md`.
 
 There is **no spreadsheet import**, no column mapping, and no image-to-row
 matching. A predecessor repo (`sticker-maker`) worked that way; do not
@@ -50,13 +56,17 @@ src/
   fs/          folder (pick + remember), library (stickers.json + the images), upcLookup
   lib/         helpers (parseFilename, normalize, zip)
   store/       Zustand store (useAppStore.ts)
-  components/  UI components — one file per component (PascalCase)
+  components/  FolderGate, RequestBar, StickerGrid, StickerCard, BasketPanel
   types/       shared types (index.ts)
 ```
 
-There is no `routes/`. The app is one screen: a filter bar over a grid of every
-sticker in the library. Importing adds to that library and selects the new
-items; there is no separate batch mode.
+There is no `routes/`. The app is one screen: a request bar over a grid of every
+sticker in the library, with a basket panel that opens beside it. Importing adds
+to that library and selects the new items; there is no separate batch mode.
+
+The size and type controls are **not** filters — they never remove a card. They
+choose the Variant everything is drawn as and that Add will use. The search box
+is the only filter.
 
 ## Rules that matter
 
